@@ -1,0 +1,26 @@
+# Core Dependencies
+PyQt5==5.15.2
+cryptography==3.4.7
+bcrypt==4.1.2
+
+# Windows-specific Dependencies
+pywin32==306  # Required for Windows-specific functionality
+
+# Required Files (must be in the same directory as the main script):
+# - Test.py (main application file)
+# - Insert_data.ui (UI definition file)
+# - resources.qrc (resource file)
+# - resources_rc.py (compiled resources)
+# - users.json (user database)
+# - data.encrypted (encrypted data file)
+# - resources/ (directory containing all resource files)
+#   - images/ (directory containing all image assets)
+#     - Pharmacist.jpeg
+
+# Installation Instructions:
+# 1. Install Python 3.8 or later
+# 2. Run: pip install -r requirements_windows.txt
+# 3. Run the application with: python Test.py
+
+# Note: The application requires read/write permissions in its directory
+# for the data.encrypted and users.json files.
