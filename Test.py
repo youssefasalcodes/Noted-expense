@@ -2085,103 +2085,6 @@ class Ui_Form(object):
             # Add edit button to layout
             button_layout.addWidget(edit_button)
             
-            # Add show_returned_types method to the class
-            def show_returned_types(row_data, parent_dialog):
-                # Parse medicine types from the row data
-                try:
-                    medicine_types = json.loads(row_data.get('medicine_types', '[]'))
-                except (json.JSONDecodeError, AttributeError):
-                    medicine_types = []
-                
-                if not medicine_types:
-                    QtWidgets.QMessageBox.information(parent_dialog, "No Returned Types", "No returned medicine types found for this row.")
-                    return
-                
-                # Create dialog to display returned types
-                dialog = QtWidgets.QDialog(parent_dialog)
-                dialog.setWindowTitle("Returned Medicine Types")
-                dialog.setWindowModality(QtCore.Qt.WindowModal)
-                dialog.resize(600, 400)
-                
-                # Create layout
-                layout = QtWidgets.QVBoxLayout(dialog)
-                
-                # Add provider and date info
-                info_label = QtWidgets.QLabel(f"<b>Provider:</b> {row_data.get('provider', 'N/A')} | <b>Date:</b> {row_data.get('timestamp', 'N/A')}")
-                info_label.setStyleSheet("font-size: 14px; margin-bottom: 10px;")
-                layout.addWidget(info_label)
-                
-                # Create table to display returned types
-                table_widget = QtWidgets.QTableWidget()
-                table_widget.setColumnCount(3)
-                table_widget.setHorizontalHeaderLabels(["Medicine Name", "Amount Returned", "Price per Unit"])
-                table_widget.setRowCount(len(medicine_types))
-                
-                # Populate table with returned types
-                for row, med in enumerate(medicine_types):
-                    name_item = QtWidgets.QTableWidgetItem(med.get('name', ''))
-                    amount_item = QtWidgets.QTableWidgetItem(str(med.get('amount', '')))
-                    price_item = QtWidgets.QTableWidgetItem(f"{float(med.get('price', 0)):.2f}" if med.get('price') else '0.00')
-                    
-                    # Set items in table
-                    table_widget.setItem(row, 0, name_item)
-                    table_widget.setItem(row, 1, amount_item)
-                    table_widget.setItem(row, 2, price_item)
-                    
-                    # Set alignment for all cells
-                    for col in range(3):
-                        item = table_widget.item(row, col)
-                        if item:
-                            item.setTextAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter)
-                
-                # Set column widths
-                table_widget.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-                table_widget.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-                table_widget.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
-                
-                # Add table to layout
-                layout.addWidget(table_widget)
-                
-                # Add total returned value
-                total_returned = sum(
-                    float(med.get('amount', 0)) * float(med.get('price', 0))
-                    for med in medicine_types
-                    if med.get('amount') and med.get('price')
-                )
-                total_label = QtWidgets.QLabel(f"<b>Total Returned Value:</b> {total_returned:.2f}")
-                total_label.setStyleSheet("font-size: 14px; margin-top: 10px;")
-                layout.addWidget(total_label, 0, QtCore.Qt.AlignRight)
-                
-                # Add close button
-                close_btn = QtWidgets.QPushButton("Close")
-                close_btn.clicked.connect(dialog.accept)
-                close_btn.setStyleSheet(
-                    "QPushButton {"
-                    "background-color: #f44336;"
-                    "color: white;"
-                    "font-size: 14px;"
-                    "padding: 6px 12px;"
-                    "border-radius: 4px;"
-                    "min-width: 100px;"
-                    "margin-top: 10px;"
-                    "}"
-                    "QPushButton:hover { background-color: #e53935; }"
-                )
-                
-                # Center the close button
-                btn_layout = QtWidgets.QHBoxLayout()
-                btn_layout.addStretch()
-                btn_layout.addWidget(close_btn)
-                btn_layout.addStretch()
-                
-                layout.addLayout(btn_layout)
-                
-                # Show the dialog
-                dialog.exec_()
-            
-            # Add the method to the class
-            self.show_returned_types = show_returned_types
-            
             # Add the button container to the main layout
             main_layout.addWidget(button_container)
             
@@ -2286,6 +2189,100 @@ class Ui_Form(object):
         print('About to exec_ dialog')
         Dialog.exec_()
         print('Dialog closed')
+
+    def show_returned_types(self, row_data, parent_dialog):
+        import json
+        # Parse medicine types from the row data
+        try:
+            medicine_types = json.loads(row_data.get('medicine_types', '[]'))
+        except (json.JSONDecodeError, AttributeError):
+            medicine_types = []
+        
+        if not medicine_types:
+            QtWidgets.QMessageBox.information(parent_dialog, "No Returned Types", "No returned medicine types found for this row.")
+            return
+        
+        # Create dialog to display returned types
+        dialog = QtWidgets.QDialog(parent_dialog)
+        dialog.setWindowTitle("Returned Medicine Types")
+        dialog.setWindowModality(QtCore.Qt.WindowModal)
+        dialog.resize(600, 400)
+        
+        # Create layout
+        layout = QtWidgets.QVBoxLayout(dialog)
+        
+        # Add provider and date info
+        info_label = QtWidgets.QLabel(f"<b>Provider:</b> {row_data.get('provider', 'N/A')} | <b>Date:</b> {row_data.get('timestamp', 'N/A')}")
+        info_label.setStyleSheet("font-size: 14px; margin-bottom: 10px;")
+        layout.addWidget(info_label)
+        
+        # Create table to display returned types
+        table_widget = QtWidgets.QTableWidget()
+        table_widget.setColumnCount(3)
+        table_widget.setHorizontalHeaderLabels(["Medicine Name", "Amount Returned", "Price per Unit"])
+        table_widget.setRowCount(len(medicine_types))
+        
+        # Populate table with returned types
+        for row, med in enumerate(medicine_types):
+            name_item = QtWidgets.QTableWidgetItem(med.get('name', ''))
+            amount_item = QtWidgets.QTableWidgetItem(str(med.get('amount', '')))
+            price_item = QtWidgets.QTableWidgetItem(f"{float(med.get('price', 0)):.2f}" if med.get('price') else '0.00')
+            
+            # Set items in table
+            table_widget.setItem(row, 0, name_item)
+            table_widget.setItem(row, 1, amount_item)
+            table_widget.setItem(row, 2, price_item)
+            
+            # Set alignment for all cells
+            for col in range(3):
+                item = table_widget.item(row, col)
+                if item:
+                    item.setTextAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter)
+        
+        # Set column widths
+        table_widget.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        table_widget.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        table_widget.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
+        
+        # Add table to layout
+        layout.addWidget(table_widget)
+        
+        # Add total returned value
+        total_returned = sum(
+            float(med.get('amount', 0)) * float(med.get('price', 0))
+            for med in medicine_types
+            if med.get('amount') and med.get('price')
+        )
+        total_label = QtWidgets.QLabel(f"<b>Total Returned Value:</b> {total_returned:.2f}")
+        total_label.setStyleSheet("font-size: 14px; margin-top: 10px;")
+        layout.addWidget(total_label, 0, QtCore.Qt.AlignRight)
+        
+        # Add close button
+        close_btn = QtWidgets.QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        close_btn.setStyleSheet(
+            "QPushButton {"
+            "background-color: #f44336;"
+            "color: white;"
+            "font-size: 14px;"
+            "padding: 6px 12px;"
+            "border-radius: 4px;"
+            "min-width: 100px;"
+            "margin-top: 10px;"
+            "}"
+            "QPushButton:hover { background-color: #e53935; }"
+        )
+        
+        # Center the close button
+        btn_layout = QtWidgets.QHBoxLayout()
+        btn_layout.addStretch()
+        btn_layout.addWidget(close_btn)
+        btn_layout.addStretch()
+        
+        layout.addLayout(btn_layout)
+        
+        # Show the dialog
+        dialog.exec_()
 
     def delete_row(self, table, row, data):
         # Remove row from data and update file
