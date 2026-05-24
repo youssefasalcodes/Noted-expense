@@ -46,6 +46,7 @@ import bcrypt
 import json
 
 USERS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.json')
+SUPPLIERS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'suppliers.json')
 
 # --- Key Derivation and Encryption Setup ---
 # Salt for key derivation (should be stored securely)
@@ -111,11 +112,261 @@ def ensure_admin_exists():
         save_users(users)
     return users
 
+# --- Supplier Management ---
+def load_suppliers():
+    """Load suppliers from encrypted file."""
+    try:
+        if not os.path.exists(SUPPLIERS_FILE_PATH):
+            # Return default suppliers if file doesn't exist
+            return [
+                "Pharma overseas",
+                "Medical star", 
+                "El shams",
+                "El makromy",
+                "New medical",
+                "Bayt el makdess",
+                "El magd",
+                "New pharma",
+                "khookh",
+                "Al derasat"
+            ]
+        
+        with open(SUPPLIERS_FILE_PATH, 'r', encoding='utf-8') as f:
+            suppliers = json.load(f)
+        return suppliers if isinstance(suppliers, list) else []
+    except Exception as e:
+        print(f"Error loading suppliers: {e}")
+        # Return default suppliers on error
+        return [
+            "Pharma overseas",
+            "Medical star", 
+            "El shams",
+            "El makromy",
+            "New medical",
+            "Bayt el makdess",
+            "El magd",
+            "New pharma",
+            "khookh",
+            "Al derasat"
+        ]
+
+def save_suppliers(suppliers):
+    """Save suppliers to file."""
+    try:
+        with open(SUPPLIERS_FILE_PATH, 'w', encoding='utf-8') as f:
+            json.dump(suppliers, f, ensure_ascii=False, indent=2)
+        print(f"Saved {len(suppliers)} suppliers successfully")
+    except Exception as e:
+        print(f"Error saving suppliers: {e}")
+        raise
+
+def ensure_suppliers_exist():
+    """Ensure suppliers file exists with default data."""
+    if not os.path.exists(SUPPLIERS_FILE_PATH):
+        default_suppliers = [
+            "Pharma overseas",
+            "Medical star", 
+            "El shams",
+            "El makromy",
+            "New medical",
+            "Bayt el makdess",
+            "El magd",
+            "New pharma",
+            "khookh",
+            "Al derasat"
+        ]
+        save_suppliers(default_suppliers)
+        return default_suppliers
+    return load_suppliers()
+
+# --- Supplier Management Dialog ---
+class SupplierManagerDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('إدارة الموردين')
+        self.setMinimumSize(500, 400)
+        layout = QtWidgets.QVBoxLayout(self)
+        
+        # Supplier list widget
+        self.supplier_list = QtWidgets.QListWidget(self)
+        self.supplier_list.setStyleSheet("""
+            QListWidget {
+                font-size: 14px;
+                font-weight: bold;
+                padding: 5px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                background-color: white;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #eee;
+            }
+            QListWidget::item:selected {
+                background-color: #e3f2fd;
+                color: #1976d2;
+            }
+        """)
+        layout.addWidget(self.supplier_list)
+        
+        # Buttons
+        button_layout = QtWidgets.QHBoxLayout()
+        
+        self.add_btn = QtWidgets.QPushButton('إضافة مورد', self)
+        self.add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 8px 16px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        self.add_btn.clicked.connect(self.add_supplier)
+        button_layout.addWidget(self.add_btn)
+        
+        self.edit_btn = QtWidgets.QPushButton('تعديل', self)
+        self.edit_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 8px 16px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #1565C0;
+            }
+        """)
+        self.edit_btn.clicked.connect(self.edit_supplier)
+        button_layout.addWidget(self.edit_btn)
+        
+        self.delete_btn = QtWidgets.QPushButton('حذف', self)
+        self.delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 8px 16px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #e53935;
+            }
+        """)
+        self.delete_btn.clicked.connect(self.delete_supplier)
+        button_layout.addWidget(self.delete_btn)
+        
+        layout.addLayout(button_layout)
+        
+        self.refresh()
+    
+    def refresh(self):
+        """Refresh the supplier list."""
+        self.supplier_list.clear()
+        suppliers = load_suppliers()
+        self.supplier_list.addItems(suppliers)
+    
+    def add_supplier(self):
+        """Add a new supplier."""
+        supplier, ok = QtWidgets.QInputDialog.getText(
+            self, 
+            'إضافة مورد جديد', 
+            'اسم المورد:'
+        )
+        if not ok or not supplier:
+            return
+        
+        supplier = supplier.strip()
+        if not supplier:
+            QtWidgets.QMessageBox.warning(self, 'خطأ', 'اسم المورد لا يمكن أن يكون فارغاً')
+            return
+        
+        suppliers = load_suppliers()
+        # Case-insensitive duplicate check
+        suppliers_lower = [s.lower().strip() for s in suppliers]
+        if supplier.lower() in suppliers_lower:
+            QtWidgets.QMessageBox.warning(self, 'موجود مسبقاً', 'المورد موجود بالفعل')
+            return
+        
+        suppliers.append(supplier)
+        save_suppliers(suppliers)
+        self.refresh()
+        QtWidgets.QMessageBox.information(self, 'نجاح', 'تم إضافة المورد بنجاح')
+    
+    def edit_supplier(self):
+        """Edit the selected supplier."""
+        current_item = self.supplier_list.currentItem()
+        if not current_item:
+            QtWidgets.QMessageBox.warning(self, 'لا يوجد تحديد', 'الرجاء تحديد مورد للتعديل')
+            return
+        
+        current_supplier = current_item.text()
+        
+        new_supplier, ok = QtWidgets.QInputDialog.getText(
+            self,
+            'تعديل المورد',
+            f'الاسم الحالي: {current_supplier}\nالاسم الجديد:',
+            text=current_supplier
+        )
+        
+        if not ok or not new_supplier:
+            return
+        
+        new_supplier = new_supplier.strip()
+        if not new_supplier:
+            QtWidgets.QMessageBox.warning(self, 'خطأ', 'اسم المورد لا يمكن أن يكون فارغاً')
+            return
+        
+        suppliers = load_suppliers()
+        # Case-insensitive duplicate check (exclude current supplier from check)
+        suppliers_lower = [s.lower().strip() for s in suppliers if s.lower().strip() != current_supplier.lower().strip()]
+        if new_supplier.lower() in suppliers_lower:
+            QtWidgets.QMessageBox.warning(self, 'موجود مسبقاً', 'المورد موجود بالفعل')
+            return
+        
+        # Update the supplier in the list
+        index = suppliers.index(current_supplier)
+        suppliers[index] = new_supplier
+        save_suppliers(suppliers)
+        self.refresh()
+        QtWidgets.QMessageBox.information(self, 'نجاح', 'تم تعديل المورد بنجاح')
+    
+    def delete_supplier(self):
+        """Delete the selected supplier."""
+        current_item = self.supplier_list.currentItem()
+        if not current_item:
+            QtWidgets.QMessageBox.warning(self, 'لا يوجد تحديد', 'الرجاء تحديد مورد للحذف')
+            return
+        
+        supplier = current_item.text()
+        
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            'تأكيد الحذف',
+            f'هل أنت متأكد من حذف المورد "{supplier}"؟',
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+        )
+        
+        if reply == QtWidgets.QMessageBox.Yes:
+            suppliers = load_suppliers()
+            if supplier in suppliers:
+                suppliers.remove(supplier)
+                save_suppliers(suppliers)
+                self.refresh()
+                QtWidgets.QMessageBox.information(self, 'نجاح', 'تم حذف المورد بنجاح')
+
 # --- Login Dialog ---
 class LoginDialog(QtWidgets.QDialog):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('Login')
+        self.setWindowTitle('تسجيل الدخول')
         self.setModal(True)
         self.setFixedSize(300, 180)
         layout = QtWidgets.QVBoxLayout(self)
@@ -127,13 +378,13 @@ class LoginDialog(QtWidgets.QDialog):
         self.userCombo.addItems(usernames)
 
         self.passEdit = QtWidgets.QLineEdit(self)
-        self.passEdit.setPlaceholderText('Password')
+        self.passEdit.setPlaceholderText('كلمة المرور')
         self.passEdit.setEchoMode(QtWidgets.QLineEdit.Password)
-        self.loginBtn = QtWidgets.QPushButton('Login', self)
+        self.loginBtn = QtWidgets.QPushButton('تسجيل الدخول', self)
         self.loginBtn.clicked.connect(self.login)
-        layout.addWidget(QtWidgets.QLabel('Username:'))
+        layout.addWidget(QtWidgets.QLabel('اسم المستخدم:'))
         layout.addWidget(self.userCombo)
-        layout.addWidget(QtWidgets.QLabel('Password:'))
+        layout.addWidget(QtWidgets.QLabel('كلمة المرور:'))
         layout.addWidget(self.passEdit)
         layout.addWidget(self.loginBtn)
         self.result = None
@@ -146,20 +397,20 @@ class LoginDialog(QtWidgets.QDialog):
                 self.result = user
                 self.accept()
                 return
-        QtWidgets.QMessageBox.warning(self, 'Login Failed', 'Invalid username or password')
+        QtWidgets.QMessageBox.warning(self, 'فشل تسجيل الدخول', 'اسم المستخدم أو كلمة المرور غير صحيحة')
 
 # --- User Management Dialog ---
 class UserManagerDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('User Management')
+        self.setWindowTitle('إدارة المستخدمين')
         self.setMinimumSize(400, 300)
         layout = QtWidgets.QVBoxLayout(self)
         self.table = QtWidgets.QTableWidget(self)
         self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(['Username', 'Role', 'Change Password'])
+        self.table.setHorizontalHeaderLabels(['اسم المستخدم', 'الدور', 'تغيير كلمة المرور'])
         layout.addWidget(self.table)
-        self.addBtn = QtWidgets.QPushButton('Add User', self)
+        self.addBtn = QtWidgets.QPushButton('إضافة مستخدم', self)
         self.addBtn.clicked.connect(self.add_user)
         layout.addWidget(self.addBtn)
         self.refresh()
@@ -170,33 +421,33 @@ class UserManagerDialog(QtWidgets.QDialog):
         for i, user in enumerate(users):
             self.table.setItem(i, 0, QtWidgets.QTableWidgetItem(user['username']))
             self.table.setItem(i, 1, QtWidgets.QTableWidgetItem(user['role']))
-            btn = QtWidgets.QPushButton('Change Password', self)
+            btn = QtWidgets.QPushButton('تغيير كلمة المرور', self)
             btn.clicked.connect(lambda _, u=user['username']: self.change_pw(u))
             self.table.setCellWidget(i, 2, btn)
             # Add Rename button if not self
-            rename_btn = QtWidgets.QPushButton('Rename', self)
+            rename_btn = QtWidgets.QPushButton('إعادة التسمية', self)
             rename_btn.clicked.connect(lambda _, u=user['username']: self.rename_user(u))
             # Add Delete button if not self
-            del_btn = QtWidgets.QPushButton('Delete', self)
+            del_btn = QtWidgets.QPushButton('حذف', self)
             if user['username'] == current_admin:
                 del_btn.setEnabled(False)
-                del_btn.setToolTip('Cannot delete currently logged-in admin')
+                del_btn.setToolTip('لا يمكن حذف المشرف الحالي')
             else:
                 del_btn.clicked.connect(lambda _, u=user['username']: self.delete_user(u))
             # Add rename and delete buttons in new columns
             if self.table.columnCount() < 5:
                 self.table.setColumnCount(5)
-                self.table.setHorizontalHeaderLabels(['Username', 'Role', 'Change Password', 'Rename', 'Delete'])
+                self.table.setHorizontalHeaderLabels(['اسم المستخدم', 'الدور', 'تغيير كلمة المرور', 'إعادة التسمية', 'حذف'])
             self.table.setCellWidget(i, 3, rename_btn)
             self.table.setCellWidget(i, 4, del_btn)
 
     def rename_user(self, username):
         users = load_users()
-        new_username, ok = QtWidgets.QInputDialog.getText(self, 'Rename User', f'Enter new username for {username}:')
+        new_username, ok = QtWidgets.QInputDialog.getText(self, 'إعادة تسمية المستخدم', f'أدخل اسم المستخدم الجديد لـ {username}:')
         if not ok or not new_username:
             return
         if any(u['username'] == new_username for u in users):
-            QtWidgets.QMessageBox.warning(self, 'Exists', 'A user with that username already exists.')
+            QtWidgets.QMessageBox.warning(self, 'موجود مسبقاً', 'اسم المستخدم موجود بالفعل')
             return
         for user in users:
             if user['username'] == username:
@@ -209,7 +460,7 @@ class UserManagerDialog(QtWidgets.QDialog):
         self.refresh()
 
     def delete_user(self, username):
-        reply = QtWidgets.QMessageBox.question(self, 'Delete User', f'Are you sure you want to delete user "{username}"?', QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        reply = QtWidgets.QMessageBox.question(self, 'حذف المستخدم', f'هل أنت متأكد من حذف المستخدم "{username}"؟', QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
         if reply == QtWidgets.QMessageBox.Yes:
             users = load_users()
             users = [u for u in users if u['username'] != username]
@@ -217,21 +468,21 @@ class UserManagerDialog(QtWidgets.QDialog):
             self.refresh()
 
     def add_user(self):
-        u, ok = QtWidgets.QInputDialog.getText(self, 'Add User', 'Username:')
+        u, ok = QtWidgets.QInputDialog.getText(self, 'إضافة مستخدم', 'اسم المستخدم:')
         if not ok or not u: return
-        pw, ok = QtWidgets.QInputDialog.getText(self, 'Add User', 'Password:', QtWidgets.QLineEdit.Password)
+        pw, ok = QtWidgets.QInputDialog.getText(self, 'إضافة مستخدم', 'كلمة المرور:', QtWidgets.QLineEdit.Password)
         if not ok or not pw: return
-        role, ok = QtWidgets.QInputDialog.getItem(self, 'Add User', 'Role:', ['user', 'admin'], 0, False)
+        role, ok = QtWidgets.QInputDialog.getItem(self, 'إضافة مستخدم', 'الدور:', ['user', 'admin'], 0, False)
         if not ok: return
         users = load_users()
         if any(x['username'] == u for x in users):
-            QtWidgets.QMessageBox.warning(self, 'Exists', 'User already exists')
+            QtWidgets.QMessageBox.warning(self, 'موجود مسبقاً', 'المستخدم موجود بالفعل')
             return
         users.append({'username': u, 'password_hash': hash_pw(pw), 'role': role})
         save_users(users)
         self.refresh()
     def change_pw(self, username):
-        pw, ok = QtWidgets.QInputDialog.getText(self, 'Change Password', f'New password for {username}:', QtWidgets.QLineEdit.Password)
+        pw, ok = QtWidgets.QInputDialog.getText(self, 'تغيير كلمة المرور', f'كلمة المرور الجديدة لـ {username}:', QtWidgets.QLineEdit.Password)
         if not ok or not pw: return
         users = load_users()
         for user in users:
@@ -257,8 +508,12 @@ ENCRYPTION_KEY = base64.urlsafe_b64encode(kdf.derive(password))
 def encrypt_data(data):
     """Encrypt data and save to file using Fernet encryption"""
     try:
-        # Convert data to CSV string
-        csv_data = data.getvalue()
+        # Handle both StringIO objects and strings
+        if hasattr(data, 'getvalue'):
+            csv_data = data.getvalue()
+        else:
+            csv_data = data
+        
         # Convert to bytes
         byte_data = csv_data.encode()
         
@@ -389,7 +644,7 @@ class Ui_Dialog(object):
     def setupUi2(self, Dialog):
         Dialog.setObjectName("Dialog")
         Dialog.resize(700, 500)
-        Dialog.setWindowTitle("Add Data - Price Tracker")
+        Dialog.setWindowTitle("إضافة بيانات - متتبع الأسعار")
         Dialog.setStyleSheet("""
             QWidget {
                 background-color: white;
@@ -447,12 +702,13 @@ class Ui_Dialog(object):
         row_layout = QtWidgets.QHBoxLayout()
         row_layout.setSpacing(20)
 
-        # Provider selection
+        # Provider selection - load dynamically from suppliers file
         self.comboBox = QtWidgets.QComboBox(Dialog)
-        self.comboBox.addItems(["Select a provider", "Pharma overseas", "Medical star", "El shams", "El makromy", "New medical", "Bayt el makdess", "El magd", "New pharma", "khookh", "Al derasat"])
+        suppliers = load_suppliers()
+        self.comboBox.addItems(["اختر المورد"] + suppliers)
         
         # Add outstanding balance label
-        self.outstanding_balance_label = QtWidgets.QLabel("Outstanding Balance: 0.00")
+        self.outstanding_balance_label = QtWidgets.QLabel("الرصيد المستحق: 0.00")
         self.outstanding_balance_label.setStyleSheet("""
             font-size: 14px;
             font-weight: bold;
@@ -467,9 +723,9 @@ class Ui_Dialog(object):
         # Connect provider change to update outstanding balance
         def update_outstanding_balance():
             provider = self.comboBox.currentText()
-            if provider != "Select a provider":
+            if provider != "اختر المورد":
                 balance = get_outstanding_balance(provider)
-                self.outstanding_balance_label.setText(f"Outstanding Balance: {balance:.2f}")
+                self.outstanding_balance_label.setText(f"الرصيد المستحق: {balance:.2f}")
                 self.outstanding_balance_label.show()
                 # Update net owed calculation when provider changes
                 self.update_net_owed()
@@ -495,7 +751,7 @@ class Ui_Dialog(object):
         # Amount LineEdit
         self.textEdit = QtWidgets.QLineEdit(Dialog)
         self.textEdit.setObjectName("textEdit")
-        self.textEdit.setPlaceholderText("Enter amount here...")
+        self.textEdit.setPlaceholderText("قيمة الفاتورة")
         self.textEdit.setValidator(QtGui.QDoubleValidator())
         self.textEdit.textChanged.connect(self.clearPlaceholder)
         self.textEdit.setMinimumHeight(40)
@@ -511,7 +767,7 @@ class Ui_Dialog(object):
         # Amount Returned Label
         self.amountReturnedLabel = QtWidgets.QLabel(Dialog)
         self.amountReturnedLabel.setObjectName("amountReturnedLabel")
-        self.amountReturnedLabel.setText("Total Returned Value: 0.00")
+        self.amountReturnedLabel.setText("إجمالي قيمة المرتجع: 0.00")
         self.amountReturnedLabel.setMinimumHeight(40)
         self.amountReturnedLabel.setStyleSheet("font-size: 16px; background: #f0f0f0; border: 1px solid #ccc; padding: 8px;")
         row_layout2.addWidget(self.amountReturnedLabel, 2)
@@ -519,7 +775,7 @@ class Ui_Dialog(object):
         # Order Code Input
         self.orderCodeEdit = QtWidgets.QLineEdit(Dialog)
         self.orderCodeEdit.setObjectName("orderCodeEdit")
-        self.orderCodeEdit.setPlaceholderText("Enter order code (max 10 digits)")
+        self.orderCodeEdit.setPlaceholderText("رقم الفاتورة")
         self.orderCodeEdit.setMinimumHeight(40)
         self.orderCodeEdit.setStyleSheet("font-size: 16px;")
         # Set validator for 10-digit number
@@ -529,7 +785,7 @@ class Ui_Dialog(object):
         main_layout.addLayout(row_layout2)
         
         # Payment Options
-        payment_group = QtWidgets.QGroupBox("Payment Options")
+        payment_group = QtWidgets.QGroupBox("خيارات الدفع")
         payment_group.setStyleSheet("""
             QGroupBox {
                 font-size: 14px;
@@ -554,9 +810,9 @@ class Ui_Dialog(object):
         radio_button_layout.setSpacing(20)  # Add some spacing between buttons
         
         # Radio buttons for payment type with explicit text and styling
-        self.cash_radio = QtWidgets.QRadioButton("Complete Cash Payment")
-        self.partial_radio = QtWidgets.QRadioButton("Partial Payment")
-        self.debt_radio = QtWidgets.QRadioButton("Debt (Pay Later)")
+        self.cash_radio = QtWidgets.QRadioButton("دفع نقدي كامل")
+        self.partial_radio = QtWidgets.QRadioButton("دفع جزئي")
+        self.debt_radio = QtWidgets.QRadioButton("دَيْن (دفع لاحقاً)")
         
         # Style radio buttons with proper text visibility
         radio_style = """
@@ -591,7 +847,7 @@ class Ui_Dialog(object):
         self.payment_amount_layout = QtWidgets.QHBoxLayout()
         self.payment_amount_layout.setSpacing(10)
         
-        self.payment_amount_label = QtWidgets.QLabel("Amount Paid:")
+        self.payment_amount_label = QtWidgets.QLabel("المبلغ المدفوع:")
         self.payment_amount_label.setStyleSheet("font-size: 14px; min-width: 100px;")
         
         self.payment_amount_input = QtWidgets.QLineEdit()
@@ -613,7 +869,7 @@ class Ui_Dialog(object):
         """)
         
         # Net owed label with improved styling
-        self.net_owed_label = QtWidgets.QLabel("Net Owed: 0.00")
+        self.net_owed_label = QtWidgets.QLabel("باقي المديونية للشركة: 0.00")
         self.net_owed_label.setStyleSheet("""
             font-size: 14px;
             font-weight: bold;
@@ -621,7 +877,7 @@ class Ui_Dialog(object):
             background-color: #f8f8f8;
             border: 1px solid #e0e0e0;
             border-radius: 4px;
-            min-width: 150px;
+            min-width: 300px;
             text-align: center;
         """)
         
@@ -705,7 +961,7 @@ class Ui_Dialog(object):
         # Table for types of medicine returned
         self.medicineTable = QtWidgets.QTableWidget(Dialog)
         self.medicineTable.setColumnCount(3)
-        self.medicineTable.setHorizontalHeaderLabels(["Medicine Name", "Amount Returned", "Price per Unit"])
+        self.medicineTable.setHorizontalHeaderLabels(["اسم الدواء", "الكمية المرجعة", "السعر للوحدة"])
         self.medicineTable.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
         self.medicineTable.setMinimumHeight(120)
         
@@ -721,7 +977,21 @@ class Ui_Dialog(object):
                     total += a * p
                 except Exception:
                     pass
-            self.amountReturnedLabel.setText(f"Total Returned Value: {total:.2f}")
+            
+            # Get the order amount
+            try:
+                order_amount = float(self.textEdit.text() or 0)
+            except ValueError:
+                order_amount = 0.0
+            
+            # Check if returned amount exceeds order amount
+            if total > order_amount and order_amount > 0:
+                self.amountReturnedLabel.setText(f"إجمالي قيمة المرتجع: {total:.2f} (يتجاوز قيمة الطلب!)")
+                self.amountReturnedLabel.setStyleSheet("font-size: 16px; background: #ffebee; border: 2px solid #f44336; padding: 8px; color: #c62828;")
+            else:
+                self.amountReturnedLabel.setText(f"إجمالي قيمة المرتجع: {total:.2f}")
+                self.amountReturnedLabel.setStyleSheet("font-size: 16px; background: #f0f0f0; border: 1px solid #ccc; padding: 8px;")
+            
             self.update_net_owed()
 
         self.medicineTable.itemChanged.connect(update_amount_returned_label)
@@ -783,7 +1053,7 @@ class Ui_Dialog(object):
         # Set proper cell padding and alignment
         self.medicineTable.setStyleSheet("""
             QTableWidget {
-                font-size: 14px;
+                font-size: 21px;
             }
             QTableWidget::item {
                 height: 32px;
@@ -794,7 +1064,7 @@ class Ui_Dialog(object):
                 background-color: #f0f0f0;
                 color: black;
                 font-weight: bold;
-                font-size: 14px;
+                font-size: 21px;
                 padding: 8px;
                 border: 1px solid #ccc;
             }
@@ -804,11 +1074,11 @@ class Ui_Dialog(object):
 
         # Add/Remove row buttons
         btn_layout = QtWidgets.QHBoxLayout()
-        self.addRowBtn = QtWidgets.QPushButton("Add Medicine", Dialog)
+        self.addRowBtn = QtWidgets.QPushButton("إضافة", Dialog)
         self.addRowBtn.setStyleSheet("background-color: #90ee90; font-size: 14px;")
         self.addRowBtn.clicked.connect(self.addMedicineRow)
         btn_layout.addWidget(self.addRowBtn)
-        self.removeRowBtn = QtWidgets.QPushButton("Remove Selected", Dialog)
+        self.removeRowBtn = QtWidgets.QPushButton("حذف المحدد", Dialog)
         self.removeRowBtn.setStyleSheet("background-color: #ff7f7f; font-size: 14px;")
         self.removeRowBtn.clicked.connect(self.removeMedicineRow)
         btn_layout.addWidget(self.removeRowBtn)
@@ -836,7 +1106,7 @@ class Ui_Dialog(object):
                 
             # Get outstanding balance for the current provider
             provider = self.comboBox.currentText()
-            outstanding_balance = get_outstanding_balance(provider) if provider != "Select a provider" else 0.0
+            outstanding_balance = get_outstanding_balance(provider) if provider != "اختر المورد" else 0.0
             
             # Calculate total returned amount from medicine table
             total_returned = 0.0
@@ -850,7 +1120,7 @@ class Ui_Dialog(object):
                         pass
             
             # Update the returned amount label
-            self.amountReturnedLabel.setText(f"Total Returned Value: {total_returned:.2f}")
+            self.amountReturnedLabel.setText(f"إجمالي قيمة المرتجع: {total_returned:.2f}")
             
             # Calculate net amount before payment, including any outstanding balance
             net_amount_before_payment = (total_amount - total_returned) + outstanding_balance
@@ -883,7 +1153,7 @@ class Ui_Dialog(object):
             else:
                 self.net_owed_label.setStyleSheet("color: #388e3c; font-weight: bold;")
                 
-            self.net_owed_label.setText(f"Net Owed: {net_owed:.2f}")
+            self.net_owed_label.setText(f" باقي المديونية للشركة {net_owed:.2f}")
             
             # Update payment amount input to reflect any corrections
             if self.partial_radio.isChecked():
@@ -901,7 +1171,7 @@ class Ui_Dialog(object):
             
         except Exception as e:
             print(f"Error calculating net owed: {e}")
-            self.net_owed_label.setText("Net Owed: Error")
+            self.net_owed_label.setText("مديونية للشركة: خطأ")
             self.payment_info = {
                 'type': 'error',
                 'amount_paid': 0.0,
@@ -915,20 +1185,8 @@ class Ui_Dialog(object):
         return self.payment_info
     
     def retranslateUi(self, Dialog):
-        _translate = QtCore.QCoreApplication.translate
-        # Dialog.setWindowTitle(_translate("Dialog", "Dialog"))
-        self.comboBox.setItemText(0, _translate("Dialog", "Select a provider"))
-        self.comboBox.setItemText(1, _translate("Dialog", "Pharma overseas"))
-        self.comboBox.setItemText(2, _translate("Dialog", "Medical star"))
-        self.comboBox.setItemText(3, _translate("Dialog", "El shams"))
-        self.comboBox.setItemText(4, _translate("Dialog", "El makromy"))
-        self.comboBox.setItemText(5, _translate("Dialog", "New medical"))
-        self.comboBox.setItemText(6, _translate("Dialog", "Bayt el makdess"))
-        self.comboBox.setItemText(7, _translate("Dialog", "El magd"))
-        self.comboBox.setItemText(8, _translate("Dialog", "New pharma"))
-        self.comboBox.setItemText(9, _translate("Dialog", "khookh"))
-        self.comboBox.setItemText(10, _translate("Dialog", "Al derasat"))
-        self.submit_button.setText(_translate("Dialog", "Submit"))
+        # Simplified retranslate - suppliers are now loaded dynamically
+        self.submit_button.setText("إرسال")
 
     def clearPlaceholder(self):
         if self.textEdit.text():
@@ -954,7 +1212,7 @@ class Ui_Dialog(object):
         doctor = getattr(self, 'current_user', None)
         if not doctor:
             # fallback or error if no user is set
-            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "Error", "No logged-in user found for doctor name.")
+            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "لم يتم العثور على مستخدم مسجل الدخول لاسم الطبيب")
             return
                 # Gather medicine types and amounts
         medicine_types = []
@@ -975,22 +1233,34 @@ class Ui_Dialog(object):
                 pass
         amount_returned = f"{amount_returned:.2f}"
         # Update the label (in case user submits directly)
-        self.amountReturnedLabel.setText(f"Total Returned Value: {amount_returned}")
+        self.amountReturnedLabel.setText(f"إجمالي قيمة المرتجع: {amount_returned}")
+        
+        # Validation: Check if returned amount exceeds order amount
+        try:
+            order_amount = float(amount)
+            returned_amount = float(amount_returned)
+            if returned_amount > order_amount and order_amount > 0:
+                QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", f"قيمة المرتجع ({returned_amount:.2f}) تتجاوز قيمة الطلب ({order_amount:.2f}). لا يمكن مراجعة قيمة أكبر من قيمة الطلب.")
+                return
+        except ValueError:
+            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "قيمة الطلب أو المرتجع غير صحيحة")
+            return
+        
         # Validation
-        if provider == "Select a provider":
-            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "Error", "Please select a provider")
+        if provider == "اختر المورد":
+            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "الرجاء اختيار مورد")
             return
         if not amount:
-            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "Error", "Please enter an amount")
+            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "الرجاء إدخال مبلغ")
             return
         # Only require medicine_types if amount_returned is not 0
         if float(amount_returned) != 0.0 and not medicine_types:
-            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "Error", "Please enter at least one medicine and amount returned")
+            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "الرجاء إدخال دواء واحد على الأقل والكمية المرجعة")
             return
         # Require order code
         order_code = self.orderCodeEdit.text().strip()
         if not order_code:
-            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "Error", "Order code is required.")
+            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "رمز الطلب مطلوب")
             return
         # If any medicine is added, require all fields for each row
         # Check for partially filled medicine rows
@@ -1003,12 +1273,12 @@ class Ui_Dialog(object):
             price_val = price.text().strip() if price and price.text() else ''
             filled_count = sum(bool(x) for x in [name_val, amt_val, price_val])
             if 0 < filled_count < 3:
-                QtWidgets.QMessageBox.warning(self.textEdit.parent(), "Error", "If you fill any cell in a medicine row, all fields (name, amount, price) in that row must be filled.")
+                QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "إذا قمت بملء أي خلية في صف الدواء، يجب ملء جميع الحقول (الاسم، الكمية، السعر) في ذلك الصف")
                 return
         if len(medicine_types) > 0:
             # Also require provider, amount, and doctor
-            if provider == "Select a provider" or not amount or not doctor:
-                QtWidgets.QMessageBox.warning(self.textEdit.parent(), "Error", "Provider, amount, and doctor must be filled if any medicine is added.")
+            if provider == "اختر المورد" or not amount or not doctor:
+                QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "يجب ملء المورد والمبلغ والطبيب إذا تمت إضافة أي دواء")
                 return
         # Prepare the data
         import json
@@ -1058,10 +1328,10 @@ class Ui_Dialog(object):
             writer.writerow({fn: data.get(fn, '') for fn in fieldnames})
             encrypt_data(buffer)
         except Exception as e:
-            QtWidgets.QMessageBox.critical(self.textEdit.parent(), "Error", f"Failed to save data: {str(e)}")
+            QtWidgets.QMessageBox.critical(self.textEdit.parent(), "خطأ", f"فشل حفظ البيانات: {str(e)}")
             return
         parent = self.textEdit.parent()
-        QtWidgets.QMessageBox.information(parent, "Success", "Data saved successfully!")
+        QtWidgets.QMessageBox.information(parent, "نجاح", "تم حفظ البيانات بنجاح!")
         parent.accept()
 
 
@@ -1154,7 +1424,7 @@ class Ui_Form(object):
         button_widget_layout.setAlignment(QtCore.Qt.AlignCenter)
 
         # Circular Add Data button
-        self.addDataButton = QtWidgets.QPushButton("Add Data", Form)
+        self.addDataButton = QtWidgets.QPushButton("إضافة بيانات", Form)
         self.addDataButton.setObjectName("addDataButton")
         self.addDataButton.setFixedSize(120, 120)
         self.addDataButton.setStyleSheet("""
@@ -1173,7 +1443,7 @@ class Ui_Form(object):
         self.addDataButton.clicked.connect(lambda: add_data(self.user))
 
         # Circular Show Data button
-        self.showDataButton = QtWidgets.QPushButton("Show Data", Form)
+        self.showDataButton = QtWidgets.QPushButton("عرض البيانات", Form)
         self.showDataButton.setObjectName("showDataButton")
         self.showDataButton.setFixedSize(120, 120)
         self.showDataButton.setStyleSheet("""
@@ -1201,17 +1471,27 @@ class Ui_Form(object):
 
         # Add Manage Users button if admin
         if user and user.get('role') == 'admin':
-            self.manageUsersButton = QtWidgets.QPushButton("Manage Users", Form)
+            self.manageUsersButton = QtWidgets.QPushButton("إدارة المستخدمين", Form)
             self.manageUsersButton.setFixedHeight(40)
             self.manageUsersButton.setStyleSheet("font-size: 16px; background-color: #FFC107; color: black; font-weight: bold;")
             self.manageUsersButton.clicked.connect(self.openUserManager)
             layout.addWidget(self.manageUsersButton)
+            
+            self.manageSuppliersButton = QtWidgets.QPushButton("إدارة الموردين", Form)
+            self.manageSuppliersButton.setFixedHeight(40)
+            self.manageSuppliersButton.setStyleSheet("font-size: 16px; background-color: #9C27B0; color: white; font-weight: bold;")
+            self.manageSuppliersButton.clicked.connect(self.openSupplierManager)
+            layout.addWidget(self.manageSuppliersButton)
 
         # Set the layout
         Form.setLayout(layout)
 
     def openUserManager(self):
         dlg = UserManagerDialog(self.Form)
+        dlg.exec_()
+    
+    def openSupplierManager(self):
+        dlg = SupplierManagerDialog(self.Form)
         dlg.exec_()
 
     def showData(self):
@@ -1267,14 +1547,14 @@ class Ui_Form(object):
                     print(f"Row {i} payment_info: {row.get('payment_info', '')}")
         except Exception as e:
             print("Error reading and decrypting data:", str(e))
-            QtWidgets.QMessageBox.critical(self.Form, "Error", "Failed to read data")
+            QtWidgets.QMessageBox.critical(self.Form, "خطأ", "فشل قراءة البيانات")
             return
         print('After reading and decrypting data')
 
         # Create a new dialog to show the data
         print('Before creating dialog')
         Dialog = QtWidgets.QDialog(self.Form, QtCore.Qt.Window)
-        Dialog.setWindowTitle("Data Display - Price Tracker")
+        Dialog.setWindowTitle("عرض البيانات - متتبع الأسعار")
         # Set window flags to ensure proper window management
         Dialog.setWindowState(QtCore.Qt.WindowMaximized)
         # Set minimum size to ensure the dialog is usable when not maximized
@@ -1345,13 +1625,13 @@ class Ui_Form(object):
         main_layout.setSpacing(15)
         
         # Add title label
-        title = QtWidgets.QLabel("View All Data")
+        title = QtWidgets.QLabel("عرض جميع البيانات")
         title.setStyleSheet("font-size: 24px; font-weight: bold;")
         title.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(title)
         
         # Create a group box for filters and summary
-        filter_group = QtWidgets.QGroupBox("Filters and Summary")
+        filter_group = QtWidgets.QGroupBox("المرشحات والملخص")
         filter_group.setStyleSheet("""
             QGroupBox {
                 font-size: 14px;
@@ -1377,7 +1657,7 @@ class Ui_Form(object):
         filter_row.setContentsMargins(10, 5, 10, 5)
         
         # Provider filter
-        provider_label = QtWidgets.QLabel("Filter by Provider:")
+        provider_label = QtWidgets.QLabel("تصفية حسب المورد:")
         provider_label.setStyleSheet("font-size: 14px;")
         self.provider_combo = QtWidgets.QComboBox()
         self.provider_combo.setStyleSheet("""
@@ -1398,20 +1678,28 @@ class Ui_Form(object):
                 height: 12px;
             }
         """)
-        self.provider_combo.addItem("All Providers")
+        self.provider_combo.addItem("جميع الموردين")
         
-        # Get unique providers
+        # Get unique providers from both data and suppliers file
         providers = set()
+        
+        # Add providers from actual data
         for item in data:
             provider = item.get('provider', '').strip()
             if provider:
                 providers.add(provider)
         
+        # Add suppliers from suppliers file (for suppliers not yet used in transactions)
+        suppliers_from_file = load_suppliers()
+        for supplier in suppliers_from_file:
+            if supplier.strip():
+                providers.add(supplier.strip())
+        
         for provider in sorted(providers):
             self.provider_combo.addItem(provider)
         
         # Date range filter
-        date_label = QtWidgets.QLabel("Date Range:")
+        date_label = QtWidgets.QLabel("نطاق التاريخ:")
         date_label.setStyleSheet("font-size: 14px;")
         
         # Create date edit widgets with improved styling
@@ -1450,7 +1738,7 @@ class Ui_Form(object):
         self.start_date_edit.setDate(QtCore.QDate.currentDate().addMonths(-1))  # Default to 1 month ago
         self.start_date_edit.setStyleSheet(date_edit_style)
         
-        to_label = QtWidgets.QLabel("to")
+        to_label = QtWidgets.QLabel("إلى")
         to_label.setStyleSheet("font-size: 14px; padding: 0 5px; color: #333333;")
         
         self.end_date_edit = QtWidgets.QDateEdit()
@@ -1507,7 +1795,7 @@ class Ui_Form(object):
         end_calendar.setFirstDayOfWeek(QtCore.Qt.Sunday)
         
         # Apply filter button
-        self.apply_filter_btn = QtWidgets.QPushButton("Apply Filters")
+        self.apply_filter_btn = QtWidgets.QPushButton("تطبيق المرشحات")
         self.apply_filter_btn.setStyleSheet("""
             QPushButton {
                 background-color: #4CAF50;
@@ -1545,9 +1833,9 @@ class Ui_Form(object):
         summary_layout = QtWidgets.QHBoxLayout()
         summary_layout.setContentsMargins(10, 10, 10, 10)
         
-        self.total_owed_label = QtWidgets.QLabel("Total Owed: 0.00")
-        self.total_returned_label = QtWidgets.QLabel("Total Returned: 0.00")
-        self.total_purchases_label = QtWidgets.QLabel("Total Purchases: 0.00")
+        self.total_owed_label = QtWidgets.QLabel("إجمالي المستحق: 0.00")
+        self.total_returned_label = QtWidgets.QLabel("إجمالي المرتجع: 0.00")
+        self.total_purchases_label = QtWidgets.QLabel("إجمالي المشتريات: 0.00")
         
         for label in [self.total_owed_label, self.total_returned_label, self.total_purchases_label]:
             label.setStyleSheet("""
@@ -1571,7 +1859,7 @@ class Ui_Form(object):
 
 
         # Table setup with payment info column - Reordered columns with Types of returned after Amount Returned
-        headers = ['Provider', 'Amount', 'Doctor', 'Order Code', 'Amount Returned', 'Types of returned', 'Payment Status', 'Amount Paid', 'Net Owed', 'Timestamp']
+        headers = [  'التاريخ ', 'مديونية للشركة',  'المبلغ المسدد', 'حالة السداد', 'قيمة المرتجع', 'المرتجعات',  'رقم الفاتورة',  'المستخدم', 'قيمة الفاتورة', 'المورد']
         table = QtWidgets.QTableWidget(Dialog)
         table.setColumnCount(len(headers))
         table.setHorizontalHeaderLabels(headers)
@@ -1595,7 +1883,7 @@ class Ui_Form(object):
 
         if not data:
             table.setRowCount(1)
-            no_data_item = QtWidgets.QTableWidgetItem('No Data Available')
+            no_data_item = QtWidgets.QTableWidgetItem('لا توجد بيانات متاحة')
             no_data_item.setTextAlignment(QtCore.Qt.AlignCenter)
             no_data_item.setFlags(no_data_item.flags() & ~QtCore.Qt.ItemIsEditable)
             table.setItem(0, 0, no_data_item)
@@ -1626,7 +1914,7 @@ class Ui_Form(object):
                 payment_type = payment_info.get('type', 'cash').lower()
                 amount_paid = "0.00"
                 net_owed = "0.00"
-                payment_status = "Payment Error"
+                payment_status = "خطأ في الدفع"
                 
                 try:
                     # Get the base amount for calculations
@@ -1641,20 +1929,20 @@ class Ui_Form(object):
                         net_owed_val = float(payment_info.get('net_owed', net_amount) or net_amount)
                         amount_paid = f"{amount_paid_val:.2f}"
                         net_owed = f"{net_owed_val:.2f}"
-                        payment_status = "Partial Payment"
+                        payment_status = "دفع جزئي"
                         
                     elif payment_type == 'debt':
                         # For debt, amount paid is 0 and net owed is the full amount
                         amount_paid = "0.00"
                         net_owed = f"{net_amount:.2f}"
-                        payment_status = "On Credit"
+                        payment_status = "آجل"
                         
                     else:  # cash or unknown type
                         # For cash, amount paid is the full amount and net owed is 0
                         payment_type = 'cash'  # Ensure it's set to cash for default case
                         amount_paid = f"{net_amount:.2f}"
                         net_owed = "0.00"
-                        payment_status = "Paid in Full"
+                        payment_status = "مدفوع بالكامل"
                         
                     print(f"Payment type: {payment_type}, Status: {payment_status}, Paid: {amount_paid}, Owed: {net_owed}")
                     
@@ -1663,7 +1951,7 @@ class Ui_Form(object):
                     import traceback
                     traceback.print_exc()
                     # Default to cash payment on error
-                    payment_status = "Paid in Full"
+                    payment_status = "مدفوع بالكامل"
                     amount_paid = f"{float(item.get('amount', 0) or 0) - float(item.get('amount_returned', 0) or 0):.2f}"
                     net_owed = "0.00"
                 
@@ -1676,16 +1964,16 @@ class Ui_Form(object):
                 timestamp = item.get('timestamp', '')
                 
                 # Set items in table with new column order
-                table.setItem(row, 0, QtWidgets.QTableWidgetItem(provider))  # Provider
-                table.setItem(row, 1, QtWidgets.QTableWidgetItem(amount))     # Amount
-                table.setItem(row, 2, QtWidgets.QTableWidgetItem(doctor))     # Doctor
-                table.setItem(row, 3, QtWidgets.QTableWidgetItem(order_code))  # Order Code
+                table.setItem(row, 0, QtWidgets.QTableWidgetItem(timestamp))  # Provider
+                table.setItem(row, 1, QtWidgets.QTableWidgetItem(net_owed))     # Amount
+                table.setItem(row, 2, QtWidgets.QTableWidgetItem(amount_paid))     # Doctor
+                table.setItem(row, 3, QtWidgets.QTableWidgetItem(payment_status))  # Order Code
                 table.setItem(row, 4, QtWidgets.QTableWidgetItem(amount_returned))  # Amount Returned
                 # Column 5 is for the View button (set below)
-                table.setItem(row, 6, QtWidgets.QTableWidgetItem(payment_status))   # Payment Status
-                table.setItem(row, 7, QtWidgets.QTableWidgetItem(amount_paid))     # Amount Paid
-                table.setItem(row, 8, QtWidgets.QTableWidgetItem(net_owed))        # Net Owed
-                table.setItem(row, 9, QtWidgets.QTableWidgetItem(timestamp))       # Timestamp
+                table.setItem(row, 6, QtWidgets.QTableWidgetItem(order_code))   # Payment Status
+                table.setItem(row, 7, QtWidgets.QTableWidgetItem(doctor))     # Amount Paid
+                table.setItem(row, 8, QtWidgets.QTableWidgetItem(amount))        # Net Owed
+                table.setItem(row, 9, QtWidgets.QTableWidgetItem(provider))       # Timestamp
                 
                 # Set alignment for all cells
                 for col in range(10):  # Now we have 10 columns total
@@ -1695,7 +1983,7 @@ class Ui_Form(object):
                         item.setFlags(item.flags() & ~QtCore.Qt.ItemIsEditable)
                 
                 # Add View button for returned types
-                view_btn = QtWidgets.QPushButton("View")
+                view_btn = QtWidgets.QPushButton("عرض")
                 view_btn.setStyleSheet(
                     "QPushButton {"
                     "background-color: #FF9800;"  # Orange color
@@ -1748,7 +2036,7 @@ class Ui_Form(object):
             for item in data:
                 try:
                     # Check provider filter
-                    if selected_provider != "All Providers" and item.get('provider') != selected_provider:
+                    if selected_provider != "جميع الموردين" and item.get('provider') != selected_provider:
                         continue
                         
                     # Check date range filter
@@ -1779,18 +2067,18 @@ class Ui_Form(object):
                     if payment_type.lower() == 'partial':
                         amount_paid = f"{float(payment_info.get('amount_paid', 0)):.2f}"
                         net_owed = f"{float(payment_info.get('net_owed', 0)):.2f}"
-                        payment_status = "Partial Payment"
+                        payment_status = "دفع جزئي"
                     elif payment_type.lower() == 'debt':
                         amount_paid = "0.00"
                         net_owed = f"{float(item.get('amount', 0)) - float(item.get('amount_returned', 0)):.2f}"
-                        payment_status = "On Credit"
+                        payment_status = "آجل"
                     else:  # cash
                         amount_paid = f"{float(item.get('amount', 0)):.2f}" if item.get('amount') else '0.00'
                         net_owed = "0.00"
-                        payment_status = "Paid in Full"
+                        payment_status = "مدفوع بالكامل"
                 except (ValueError, TypeError) as e:
                     print(f"Error processing payment amounts: {e}")
-                    payment_status = "Payment Error"
+                    payment_status = "خطأ في الدفع"
                     amount_paid = "0.00"
                     net_owed = f"{float(item.get('amount', 0)) - float(item.get('amount_returned', 0)):.2f}"
                 
@@ -1876,13 +2164,13 @@ class Ui_Form(object):
                     continue
             
             # Update the summary labels with the calculated values
-            self.total_purchases_label.setText(f"Total Purchases: {total_purchases:,.2f}")
-            self.total_returned_label.setText(f"Total Returned: {total_returned:,.2f}")
-            self.total_owed_label.setText(f"Total Owed: {total_net_owed:,.2f}")
+            self.total_purchases_label.setText(f"إجمالي المشتريات: {total_purchases:,.2f}")
+            self.total_returned_label.setText(f"إجمالي المرتجع: {total_returned:,.2f}")
+            self.total_owed_label.setText(f"إجمالي المستحق: {total_net_owed:,.2f}")
             
             # Update net owed label if it exists
             if hasattr(self, 'net_owed_label'):
-                self.net_owed_label.setText(f"Net Owed: {total_net_owed:,.2f}")
+                self.net_owed_label.setText(f"باقي المديونية للشركة {total_net_owed:,.2f}")
             
             # Debug output
             print(f"Summary - Purchases: {total_purchases:,.2f}, Returned: {total_returned:,.2f}, Paid: {total_paid:,.2f}, Owed: {total_net_owed:,.2f}")
@@ -1905,14 +2193,14 @@ class Ui_Form(object):
                 end_date = self.end_date_edit.date().toPyDate()
                 
                 if start_date > end_date:
-                    QtWidgets.QMessageBox.warning(Dialog, "Invalid Date Range", "Start date cannot be after end date")
+                    QtWidgets.QMessageBox.warning(Dialog, "نطاق تاريخ غير صالح", "لا يمكن أن يكون تاريخ البداية بعد تاريخ النهاية")
                     return
                     
                 filtered_data = []
                 
                 # First, collect all data that matches the provider filter
                 provider_filtered_data = []
-                if selected_provider == "All Providers" or not selected_provider:
+                if selected_provider == "جميع الموردين" or not selected_provider:
                     provider_filtered_data = data.copy()
                 else:
                     provider_filtered_data = [item for item in data if str(item.get('provider', '')) == str(selected_provider)]
@@ -1953,15 +2241,15 @@ class Ui_Form(object):
                     if payment_type == 'partial':
                         amount_paid = f"{float(payment_info.get('amount_paid', 0)):.2f}"
                         net_owed = f"{float(payment_info.get('net_owed', net_amount)):.2f}"
-                        payment_status = "Partial Payment"
+                        payment_status = "دفع جزئي"
                     elif payment_type == 'debt':
                         amount_paid = "0.00"
                         net_owed = f"{net_amount:.2f}"
-                        payment_status = "On Credit"
+                        payment_status = "آجل"
                     else:  # cash
                         amount_paid = f"{net_amount:.2f}"
                         net_owed = "0.00"
-                        payment_status = "Paid in Full"
+                        payment_status = "مدفوع بالكامل"
                     
                     # Set items in table
                     table.setItem(row, 0, QtWidgets.QTableWidgetItem(item.get('provider', '')))
@@ -1997,15 +2285,15 @@ class Ui_Form(object):
                 if payment_type == 'partial':
                     amount_paid = f"{float(payment_info.get('amount_paid', 0)):.2f}"
                     net_owed = f"{float(payment_info.get('net_owed', net_amount)):.2f}"
-                    payment_status = "Partial Payment"
+                    payment_status = "دفع جزئي"
                 elif payment_type == 'debt':
                     amount_paid = "0.00"
                     net_owed = f"{net_amount:.2f}"
-                    payment_status = "On Credit"
+                    payment_status = "آجل"
                 else:  # cash
                     amount_paid = f"{net_amount:.2f}"
                     net_owed = "0.00"
-                    payment_status = "Paid in Full"
+                    payment_status = "مدفوع بالكامل"
                 
                 # Set items in table
                 table.setItem(row, 0, QtWidgets.QTableWidgetItem(item.get('provider', '')))
@@ -2045,7 +2333,7 @@ class Ui_Form(object):
             button_layout.setSpacing(20)
             
             # Delete button
-            delete_button = QtWidgets.QPushButton("Delete Selected Row")
+            delete_button = QtWidgets.QPushButton("حذف الصف المحدد")
             delete_button.setStyleSheet(
                 "background-color: #e53935;"
                 "color: white;"
@@ -2059,19 +2347,76 @@ class Ui_Form(object):
             def delete_selected():
                 selected = table.currentRow()
                 if selected < 0:
-                    QtWidgets.QMessageBox.warning(Dialog, "No Row Selected", "Please select a row to delete by clicking its row number.")
+                    QtWidgets.QMessageBox.warning(Dialog, "لا يوجد صف محدد", "الرجاء تحديد صف للحذف بالنقر على رقم الصف.")
                     return
-                reply = QtWidgets.QMessageBox.question(Dialog, "Confirm Delete", "Are you sure you want to delete the selected row?", 
-                                                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
-                if reply == QtWidgets.QMessageBox.Yes:
-                    self.delete_row(table, selected, data)
+                
+                # Get the actual data from the selected row
+                try:
+                    # Get provider and timestamp to identify the unique row
+                    # Based on current headers: ['التاريخ ', 'مديونية للشركة',  'المبلغ المسدد', 'حالة السداد', 'قيمة المرتجع', 'المرتجعات',  'رقم الفاتورة',  'المستخدم', 'قيمة الفاتورة', 'المورد']
+                    # Timestamp is column 0, Provider is column 9
+                    timestamp_item = table.item(selected, 0)
+                    provider_item = table.item(selected, 9)
+                    
+                    if not provider_item or not timestamp_item:
+                        QtWidgets.QMessageBox.warning(Dialog, "خطأ", "لم يتم العثور على بيانات الصف")
+                        return
+                    
+                    timestamp = timestamp_item.text()
+                    provider = provider_item.text()
+                    
+                    # Find this item in the original data
+                    item_to_delete = None
+                    item_index = -1
+                    for i, item in enumerate(data):
+                        if item.get('provider') == provider and item.get('timestamp') == timestamp:
+                            item_to_delete = item
+                            item_index = i
+                            break
+                    
+                    if item_to_delete is None:
+                        QtWidgets.QMessageBox.warning(Dialog, "خطأ", "لم يتم العثور على العنصر في البيانات")
+                        return
+                    
+                    reply = QtWidgets.QMessageBox.question(Dialog, "تأكيد الحذف", "هل أنت متأكد من حذف الصف المحدد؟", 
+                                                        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+                    if reply == QtWidgets.QMessageBox.Yes:
+                        # Remove from original data
+                        data.pop(item_index)
+                        
+                        # Save updated data
+                        from io import StringIO
+                        import csv
+                        fieldnames = ['provider', 'amount', 'doctor', 'amount_returned', 'medicine_types', 'order_code', 'payment_info', 'timestamp']
+                        buffer = StringIO()
+                        writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+                        writer.writeheader()
+                        for item in data:
+                            if 'payment_info' not in item:
+                                item['payment_info'] = ''
+                            writer.writerow(item)
+                        encrypt_data(buffer)
+                        
+                        # Remove row from table and refresh
+                        table.removeRow(selected)
+                        
+                        # Update summary
+                        update_summary()
+                        
+                        QtWidgets.QMessageBox.information(Dialog, "نجاح", "تم حذف الصف بنجاح!")
+                        
+                except Exception as e:
+                    print(f"Error deleting row: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    QtWidgets.QMessageBox.critical(Dialog, "خطأ", f"فشل حذف الصف: {str(e)}")
             
             # Add delete button to layout
             delete_button.clicked.connect(delete_selected)
             button_layout.addWidget(delete_button)
 
             # Edit button
-            edit_button = QtWidgets.QPushButton("Edit Selected Row")
+            edit_button = QtWidgets.QPushButton("تحرير الصف المحدد")
             edit_button.setStyleSheet(
                 "background-color: #43A047;"
                 "color: white;"
@@ -2094,12 +2439,12 @@ class Ui_Form(object):
                     medicine_types = []
                 
                 if not medicine_types:
-                    QtWidgets.QMessageBox.information(parent_dialog, "No Returned Types", "No returned medicine types found for this row.")
+                    QtWidgets.QMessageBox.information(parent_dialog, "لا توجد أنواع مرتجعة", "لم يتم العثور على أنواع أدوية مرتجعة لهذا الصف.")
                     return
                 
                 # Create dialog to display returned types
                 dialog = QtWidgets.QDialog(parent_dialog)
-                dialog.setWindowTitle("Returned Medicine Types")
+                dialog.setWindowTitle("أنواع الأدوية المرتجعة")
                 dialog.setWindowModality(QtCore.Qt.WindowModal)
                 dialog.resize(600, 400)
                 
@@ -2107,14 +2452,14 @@ class Ui_Form(object):
                 layout = QtWidgets.QVBoxLayout(dialog)
                 
                 # Add provider and date info
-                info_label = QtWidgets.QLabel(f"<b>Provider:</b> {row_data.get('provider', 'N/A')} | <b>Date:</b> {row_data.get('timestamp', 'N/A')}")
+                info_label = QtWidgets.QLabel(f"<b>المورد:</b> {row_data.get('provider', 'N/A')} | <b>التاريخ:</b> {row_data.get('timestamp', 'N/A')}")
                 info_label.setStyleSheet("font-size: 14px; margin-bottom: 10px;")
                 layout.addWidget(info_label)
                 
                 # Create table to display returned types
                 table_widget = QtWidgets.QTableWidget()
                 table_widget.setColumnCount(3)
-                table_widget.setHorizontalHeaderLabels(["Medicine Name", "Amount Returned", "Price per Unit"])
+                table_widget.setHorizontalHeaderLabels(["اسم الدواء", "الكمية المرجعة", "السعر للوحدة"])
                 table_widget.setRowCount(len(medicine_types))
                 
                 # Populate table with returned types
@@ -2148,12 +2493,12 @@ class Ui_Form(object):
                     for med in medicine_types
                     if med.get('amount') and med.get('price')
                 )
-                total_label = QtWidgets.QLabel(f"<b>Total Returned Value:</b> {total_returned:.2f}")
+                total_label = QtWidgets.QLabel(f"<b>إجمالي قيمة المرتجع:</b> {total_returned:.2f}")
                 total_label.setStyleSheet("font-size: 14px; margin-top: 10px;")
                 layout.addWidget(total_label, 0, QtCore.Qt.AlignRight)
                 
                 # Add close button
-                close_btn = QtWidgets.QPushButton("Close")
+                close_btn = QtWidgets.QPushButton("إغلاق")
                 close_btn.clicked.connect(dialog.accept)
                 close_btn.setStyleSheet(
                     "QPushButton {"
@@ -2188,58 +2533,473 @@ class Ui_Form(object):
             def edit_selected():
                 selected = table.currentRow()
                 if selected < 0 or not data:
-                    QtWidgets.QMessageBox.warning(Dialog, "No Row Selected", "Please select a row to edit by clicking its row number.")
+                    QtWidgets.QMessageBox.warning(Dialog, "لا يوجد صف محدد", "الرجاء تحديد صف للتحرير بالنقر على رقم الصف.")
                     return
                 
-                # Get the selected row data
-                row_data = data[selected]
+                # Get the selected row data - need to find it in original data using timestamp
+                try:
+                    timestamp_item = table.item(selected, 0)
+                    provider_item = table.item(selected, 9)
+                    
+                    if not timestamp_item or not provider_item:
+                        QtWidgets.QMessageBox.warning(Dialog, "خطأ", "لم يتم العثور على بيانات الصف")
+                        return
+                    
+                    timestamp = timestamp_item.text()
+                    provider = provider_item.text()
+                    
+                    # Find the actual data in original data
+                    row_data = None
+                    data_index = -1
+                    for i, item in enumerate(data):
+                        if item.get('provider') == provider and item.get('timestamp') == timestamp:
+                            row_data = item
+                            data_index = i
+                            break
+                    
+                    if row_data is None:
+                        QtWidgets.QMessageBox.warning(Dialog, "خطأ", "لم يتم العثور على البيانات")
+                        return
+                        
+                except Exception as e:
+                    print(f"Error getting row data: {e}")
+                    QtWidgets.QMessageBox.critical(Dialog, "خطأ", f"فشل الحصول على بيانات الصف: {str(e)}")
+                    return
                 
-                # Create edit dialog
-                edit_dialog = QtWidgets.QDialog()
-                edit_dialog.setWindowTitle("Edit Entry")
-                edit_dialog.setWindowModality(QtCore.Qt.ApplicationModal)
+                # Create edit dialog similar to add data dialog
+                edit_dialog = QtWidgets.QDialog(Dialog)
+                edit_dialog.setWindowTitle("تحرير البيانات - متتبع الأسعار")
+                edit_dialog.resize(700, 500)
+                edit_dialog.setStyleSheet("""
+                    QWidget {
+                        background-color: white;
+                    }
+                    QLabel {
+                        color: black;
+                        font-weight: bold;
+                        font-size: 14px;
+                    }
+                    QLineEdit, QComboBox, QTableWidget {
+                        background-color: white;
+                        color: black;
+                        font-weight: bold;
+                        font-size: 14px;
+                        padding: 8px;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                    }
+                    QPushButton {
+                        background-color: white;
+                        color: black;
+                        font-weight: bold;
+                        font-size: 14px;
+                        padding: 8px 16px;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                    }
+                    QPushButton:hover {
+                        background-color: #f0f0f0;
+                    }
+                """)
                 
-                # Create UI for the edit dialog
-                layout = QtWidgets.QVBoxLayout(edit_dialog)
+                # Main vertical layout
+                main_layout = QtWidgets.QVBoxLayout(edit_dialog)
+                main_layout.setContentsMargins(20, 20, 20, 20)
+                main_layout.setSpacing(20)
                 
-                # Create form layout for input fields
-                form_layout = QtWidgets.QFormLayout()
+                # Row layout for provider, amount
+                row_layout = QtWidgets.QHBoxLayout()
+                row_layout.setSpacing(20)
                 
-                # Create input fields with current values
-                provider_edit = QtWidgets.QLineEdit(row_data.get('provider', ''))
-                amount_edit = QtWidgets.QLineEdit(str(row_data.get('amount', '0.0')))
-                doctor_edit = QtWidgets.QLineEdit(row_data.get('doctor', ''))
-                amount_returned_edit = QtWidgets.QLineEdit(str(row_data.get('amount_returned', '0.0')))
-                order_code_edit = QtWidgets.QLineEdit(row_data.get('order_code', ''))
+                # Provider selection (ComboBox with existing value) - load dynamically from suppliers file
+                provider_combo = QtWidgets.QComboBox(edit_dialog)
+                suppliers = load_suppliers()
+                provider_combo.addItems(["اختر المورد"] + suppliers)
+                current_provider = row_data.get('provider', '')
+                if current_provider:
+                    index = provider_combo.findText(current_provider)
+                    if index >= 0:
+                        provider_combo.setCurrentIndex(index)
                 
-                # Add fields to form layout
-                form_layout.addRow("Provider:", provider_edit)
-                form_layout.addRow("Amount:", amount_edit)
-                form_layout.addRow("Doctor:", doctor_edit)
-                form_layout.addRow("Amount Returned:", amount_returned_edit)
-                form_layout.addRow("Order Code:", order_code_edit)
+                row_layout.addWidget(QtWidgets.QLabel("المورد:"))
+                row_layout.addWidget(provider_combo, 2)
                 
-                # Add form layout to main layout
-                layout.addLayout(form_layout)
+                # Amount LineEdit
+                amount_edit = QtWidgets.QLineEdit(edit_dialog)
+                amount_edit.setText(str(row_data.get('amount', '0.0')))
+                amount_edit.setValidator(QtGui.QDoubleValidator())
+                amount_edit.setMinimumHeight(40)
+                amount_edit.setStyleSheet("font-size: 16px;")
+                row_layout.addWidget(amount_edit, 2)
                 
-                # Add buttons
-                button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
-                button_box.accepted.connect(edit_dialog.accept)
-                button_box.rejected.connect(edit_dialog.reject)
+                main_layout.addLayout(row_layout)
                 
-                layout.addWidget(button_box)
+                # Row layout for amount returned and order code
+                row_layout2 = QtWidgets.QHBoxLayout()
+                row_layout2.setSpacing(20)
                 
-                # Show the dialog
-                if edit_dialog.exec_() == QtWidgets.QDialog.Accepted:
-                    # Update the data with edited values
-                    data[selected] = {
-                        'provider': provider_edit.text(),
-                        'amount': amount_edit.text(),
-                        'doctor': doctor_edit.text(),
-                        'amount_returned': amount_returned_edit.text(),
-                        'medicine_types': row_data.get('medicine_types', '[]'),
-                        'order_code': order_code_edit.text(),
-                        'payment_info': row_data.get('payment_info', ''),
+                # Amount Returned Label (readonly)
+                amount_returned_label = QtWidgets.QLabel(edit_dialog)
+                amount_returned_label.setText(f"إجمالي قيمة المرتجع: {row_data.get('amount_returned', '0.0')}")
+                amount_returned_label.setMinimumHeight(40)
+                amount_returned_label.setStyleSheet("font-size: 16px; background: #f0f0f0; border: 1px solid #ccc; padding: 8px;")
+                row_layout2.addWidget(amount_returned_label, 2)
+                
+                # Order Code Input
+                order_code_edit = QtWidgets.QLineEdit(edit_dialog)
+                order_code_edit.setText(row_data.get('order_code', ''))
+                order_code_edit.setMinimumHeight(40)
+                order_code_edit.setStyleSheet("font-size: 16px;")
+                order_code_edit.setValidator(QtGui.QRegExpValidator(QtCore.QRegExp(r'^\d{1,10}$')))
+                row_layout2.addWidget(order_code_edit, 2)
+                
+                main_layout.addLayout(row_layout2)
+                
+                # Payment Options
+                payment_group = QtWidgets.QGroupBox("خيارات الدفع")
+                payment_group.setStyleSheet("""
+                    QGroupBox {
+                        font-size: 14px;
+                        font-weight: bold;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                        margin-top: 10px;
+                        padding-top: 15px;
+                    }
+                    QGroupBox::title {
+                        subcontrol-origin: margin;
+                        left: 10px;
+                        padding: 0 3px 0 3px;
+                    }
+                """)
+                
+                payment_layout = QtWidgets.QVBoxLayout(payment_group)
+                payment_layout.setSpacing(10)
+                
+                # Radio buttons for payment type
+                radio_button_layout = QtWidgets.QHBoxLayout()
+                radio_button_layout.setSpacing(20)
+                
+                cash_radio = QtWidgets.QRadioButton("دفع نقدي كامل")
+                partial_radio = QtWidgets.QRadioButton("دفع جزئي")
+                debt_radio = QtWidgets.QRadioButton("دَيْن (دفع لاحقاً)")
+                
+                radio_style = """
+                    QRadioButton {
+                        font-size: 14px;
+                        color: #333333;
+                        spacing: 5px;
+                        padding: 5px 8px;
+                    }
+                    QRadioButton::indicator {
+                        width: 16px;
+                        height: 16px;
+                    }
+                """
+                
+                for radio in [cash_radio, partial_radio, debt_radio]:
+                    radio.setStyleSheet(radio_style)
+                    radio_button_layout.addWidget(radio)
+                
+                radio_button_layout.addStretch()
+                cash_radio.setChecked(True)
+                
+                # Payment amount input
+                payment_amount_layout = QtWidgets.QHBoxLayout()
+                payment_amount_layout.setSpacing(10)
+                
+                payment_amount_label = QtWidgets.QLabel("المبلغ المدفوع:")
+                payment_amount_label.setStyleSheet("font-size: 14px; min-width: 100px;")
+                
+                payment_amount_input = QtWidgets.QLineEdit()
+                payment_amount_input.setEnabled(False)
+                payment_amount_input.setValidator(QtGui.QDoubleValidator(0, 999999.99, 2))
+                payment_amount_input.setStyleSheet("""
+                    QLineEdit {
+                        font-size: 14px;
+                        padding: 5px;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                        min-width: 100px;
+                    }
+                    QLineEdit:disabled {
+                        background-color: #f5f5f5;
+                        color: #888;
+                    }
+                """)
+                
+                net_owed_label = QtWidgets.QLabel("مديونية للشركة: 0.00")
+                net_owed_label.setStyleSheet("""
+                    font-size: 14px;
+                    font-weight: bold;
+                    padding: 5px 10px;
+                    background-color: #f8f8f8;
+                    border: 1px solid #e0e0e0;
+                    border-radius: 4px;
+                    min-width: 150px;
+                    text-align: center;
+                """)
+                
+                payment_amount_layout.addWidget(payment_amount_label)
+                payment_amount_layout.addWidget(payment_amount_input, 1)
+                payment_amount_layout.addStretch(2)
+                
+                net_owed_container = QtWidgets.QFrame()
+                net_owed_container.setStyleSheet("background: transparent;")
+                net_owed_layout = QtWidgets.QHBoxLayout(net_owed_container)
+                net_owed_layout.setContentsMargins(0, 0, 0, 0)
+                net_owed_layout.addWidget(net_owed_label)
+                payment_amount_layout.addWidget(net_owed_container, 1)
+                
+                payment_layout.addLayout(radio_button_layout)
+                payment_layout.addSpacing(10)
+                payment_layout.addLayout(payment_amount_layout)
+                
+                # Set payment info from existing data
+                import json
+                try:
+                    payment_info = json.loads(row_data.get('payment_info', '{}'))
+                    payment_type = payment_info.get('type', 'cash')
+                    amount_paid = payment_info.get('amount_paid', 0)
+                    net_owed = payment_info.get('net_owed', 0)
+                    
+                    if payment_type == 'partial':
+                        partial_radio.setChecked(True)
+                        payment_amount_input.setEnabled(True)
+                        payment_amount_input.setText(str(amount_paid))
+                        net_owed_label.setText(f"مديونية للشركة: {net_owed:.2f}")
+                    elif payment_type == 'debt':
+                        debt_radio.setChecked(True)
+                        net_owed_label.setText(f"مديونية للشركة: {net_owed:.2f}")
+                    else:  # cash
+                        cash_radio.setChecked(True)
+                        net_owed_label.setText("مديونية للشركة: 0.00")
+                except:
+                    cash_radio.setChecked(True)
+                
+                def toggle_payment_input():
+                    is_partial = partial_radio.isChecked()
+                    payment_amount_input.setEnabled(is_partial)
+                    if not is_partial:
+                        payment_amount_input.clear()
+                
+                cash_radio.toggled.connect(toggle_payment_input)
+                partial_radio.toggled.connect(toggle_payment_input)
+                debt_radio.toggled.connect(toggle_payment_input)
+                
+                main_layout.addWidget(payment_group)
+                
+                # Medicine types table (if exists)
+                medicine_types = []
+                try:
+                    medicine_types = json.loads(row_data.get('medicine_types', '[]'))
+                except:
+                    medicine_types = []
+                
+                medicineTable = QtWidgets.QTableWidget(edit_dialog)
+                medicineTable.setColumnCount(3)
+                medicineTable.setHorizontalHeaderLabels(["اسم الدواء", "الكمية المرجعة", "السعر للوحدة"])
+                medicineTable.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+                medicineTable.setMinimumHeight(120)
+                
+                # Populate medicine table
+                medicineTable.setRowCount(len(medicine_types))
+                for row, med in enumerate(medicine_types):
+                    name_item = QtWidgets.QTableWidgetItem(med.get('name', ''))
+                    amount_item = QtWidgets.QTableWidgetItem(str(med.get('amount', '')))
+                    price_item = QtWidgets.QTableWidgetItem(f"{float(med.get('price', 0)):.2f}" if med.get('price') else '0.00')
+                    
+                    medicineTable.setItem(row, 0, name_item)
+                    medicineTable.setItem(row, 1, amount_item)
+                    medicineTable.setItem(row, 2, price_item)
+                    
+                    for col in range(3):
+                        item = medicineTable.item(row, col)
+                        if item:
+                            item.setTextAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter)
+                
+                main_layout.addWidget(medicineTable)
+                
+                # Add/Remove row buttons
+                btn_layout = QtWidgets.QHBoxLayout()
+                addRowBtn = QtWidgets.QPushButton("إضافة", edit_dialog)
+                addRowBtn.setStyleSheet("background-color: #90ee90; font-size: 14px;")
+                
+                def addMedicineRow():
+                    row = medicineTable.rowCount()
+                    medicineTable.insertRow(row)
+                    for col in range(3):
+                        item = QtWidgets.QTableWidgetItem("")
+                        item.setTextAlignment(QtCore.Qt.AlignCenter)
+                        medicineTable.setItem(row, col, item)
+                
+                addRowBtn.clicked.connect(addMedicineRow)
+                btn_layout.addWidget(addRowBtn)
+                
+                removeRowBtn = QtWidgets.QPushButton("حذف المحدد", edit_dialog)
+                removeRowBtn.setStyleSheet("background-color: #ff7f7f; font-size: 14px;")
+                
+                def removeMedicineRow():
+                    selected = medicineTable.currentRow()
+                    if selected >= 0:
+                        medicineTable.removeRow(selected)
+                
+                removeRowBtn.clicked.connect(removeMedicineRow)
+                btn_layout.addWidget(removeRowBtn)
+                main_layout.addLayout(btn_layout)
+                
+                # Submit button
+                submit_button = QtWidgets.QPushButton(edit_dialog)
+                submit_button.setObjectName("submit_button")
+                submit_button.setStyleSheet("background-color: orange; font-size: 16px;")
+                submit_button.setMinimumHeight(40)
+                main_layout.addWidget(submit_button, alignment=QtCore.Qt.AlignCenter)
+                
+                # Store references for submit function
+                edit_dialog.provider_combo = provider_combo
+                edit_dialog.amount_edit = amount_edit
+                edit_dialog.order_code_edit = order_code_edit
+                edit_dialog.cash_radio = cash_radio
+                edit_dialog.partial_radio = partial_radio
+                edit_dialog.debt_radio = debt_radio
+                edit_dialog.payment_amount_input = payment_amount_input
+                edit_dialog.medicineTable = medicineTable
+                edit_dialog.amount_returned_label = amount_returned_label
+                edit_dialog.net_owed_label = net_owed_label
+                
+                def update_net_owed():
+                    try:
+                        total_amount = float(amount_edit.text() or 0)
+                    except ValueError:
+                        total_amount = 0.0
+                    
+                    try:
+                        total_returned = 0.0
+                        for row in range(medicineTable.rowCount()):
+                            amt = medicineTable.item(row, 1)
+                            price = medicineTable.item(row, 2)
+                            if amt and amt.text().strip() and price and price.text().strip():
+                                try:
+                                    total_returned += float(amt.text()) * float(price.text())
+                                except ValueError:
+                                    pass
+                        
+                        # Check if returned amount exceeds order amount
+                        if total_returned > total_amount and total_amount > 0:
+                            amount_returned_label.setText(f"إجمالي قيمة المرتجع: {total_returned:.2f} (يتجاوز قيمة الطلب!)")
+                            amount_returned_label.setStyleSheet("font-size: 16px; background: #ffebee; border: 2px solid #f44336; padding: 8px; color: #c62828;")
+                        else:
+                            amount_returned_label.setText(f"إجمالي قيمة المرتجع: {total_returned:.2f}")
+                            amount_returned_label.setStyleSheet("font-size: 16px; background: #f0f0f0; border: 1px solid #ccc; padding: 8px;")
+                        
+                        net_amount_before_payment = total_amount - total_returned
+                        payment_type = ""
+                        payment_amount = 0.0
+                        
+                        if cash_radio.isChecked():
+                            payment_type = "cash"
+                            payment_amount = net_amount_before_payment
+                            net_owed = 0.0
+                        elif partial_radio.isChecked():
+                            payment_type = "partial"
+                            try:
+                                payment_amount = float(payment_amount_input.text() or 0)
+                                payment_amount = min(payment_amount, net_amount_before_payment)
+                            except ValueError:
+                                payment_amount = 0.0
+                            net_owed = max(0, net_amount_before_payment - payment_amount)
+                        else:
+                            payment_type = "debt"
+                            payment_amount = 0.0
+                            net_owed = net_amount_before_payment
+                        
+                        if net_owed > 0:
+                            net_owed_label.setStyleSheet("color: #d32f2f; font-weight: bold;")
+                        else:
+                            net_owed_label.setStyleSheet("color: #388e3c; font-weight: bold;")
+                        
+                        net_owed_label.setText(f"مديونية للشركة: {net_owed:.2f}")
+                        
+                        edit_dialog.payment_info = {
+                            'type': payment_type,
+                            'amount_paid': payment_amount,
+                            'net_owed': net_owed,
+                            'total_amount': total_amount,
+                            'total_returned': total_returned
+                        }
+                        
+                    except Exception as e:
+                        print(f"Error calculating net owed: {e}")
+                        net_owed_label.setText("مديونية للشركة: خطأ")
+                        edit_dialog.payment_info = {'type': 'error', 'amount_paid': 0.0, 'net_owed': 0.0}
+                
+                amount_edit.textChanged.connect(update_net_owed)
+                payment_amount_input.editingFinished.connect(update_net_owed)
+                medicineTable.itemChanged.connect(update_net_owed)
+                cash_radio.toggled.connect(update_net_owed)
+                partial_radio.toggled.connect(update_net_owed)
+                debt_radio.toggled.connect(update_net_owed)
+                
+                submit_button.setText("تحديث")
+                
+                def submitEdit():
+                    provider = provider_combo.currentText()
+                    amount = amount_edit.text()
+                    order_code = order_code_edit.text().strip()
+                    
+                    if provider == "اختر المورد":
+                        QtWidgets.QMessageBox.warning(edit_dialog, "خطأ", "الرجاء اختيار مورد")
+                        return
+                    if not amount:
+                        QtWidgets.QMessageBox.warning(edit_dialog, "خطأ", "الرجاء إدخال مبلغ")
+                        return
+                    if not order_code:
+                        QtWidgets.QMessageBox.warning(edit_dialog, "خطأ", "رمز الطلب مطلوب")
+                        return
+                    
+                    # Gather medicine types
+                    medicine_types_list = []
+                    for row in range(medicineTable.rowCount()):
+                        name = medicineTable.item(row, 0)
+                        amt = medicineTable.item(row, 1)
+                        price = medicineTable.item(row, 2)
+                        if name and amt and price and name.text().strip() and amt.text().strip() and price.text().strip():
+                            medicine_types_list.append({
+                                'name': name.text().strip(),
+                                'amount': amt.text().strip(),
+                                'price': price.text().strip()
+                            })
+                    
+                    # Calculate amount returned
+                    amount_returned = 0.0
+                    for med in medicine_types_list:
+                        try:
+                            amt = float(med['amount'])
+                            price = float(med['price'])
+                            amount_returned += amt * price
+                        except Exception:
+                            pass
+                    
+                    # Validation: Check if returned amount exceeds order amount
+                    try:
+                        order_amount = float(amount)
+                        returned_amount = float(amount_returned)
+                        if returned_amount > order_amount and order_amount > 0:
+                            QtWidgets.QMessageBox.warning(edit_dialog, "خطأ", f"قيمة المرتجع ({returned_amount:.2f}) تتجاوز قيمة الطلب ({order_amount:.2f}). لا يمكن مراجعة قيمة أكبر من قيمة الطلب.")
+                            return
+                    except ValueError:
+                        QtWidgets.QMessageBox.warning(edit_dialog, "خطأ", "قيمة الطلب أو المرتجع غير صحيحة")
+                        return
+                    
+                    # Update the data
+                    data[data_index] = {
+                        'provider': provider,
+                        'amount': amount,
+                        'doctor': row_data.get('doctor', ''),
+                        'amount_returned': f"{amount_returned:.2f}",
+                        'medicine_types': json.dumps(medicine_types_list) if medicine_types_list else '',
+                        'order_code': order_code,
+                        'payment_info': json.dumps(edit_dialog.payment_info) if hasattr(edit_dialog, 'payment_info') else row_data.get('payment_info', ''),
                         'timestamp': row_data.get('timestamp', '')
                     }
                     
@@ -2247,19 +3007,28 @@ class Ui_Form(object):
                     try:
                         from io import StringIO
                         import csv
-                        fieldnames = ['provider', 'amount', 'doctor', 'amount_returned', 
+                        fieldnames = ['provider', 'amount', 'doctor', 'amount_returned',
                                     'medicine_types', 'order_code', 'payment_info', 'timestamp']
                         buffer = StringIO()
                         writer = csv.DictWriter(buffer, fieldnames=fieldnames)
                         writer.writeheader()
                         for item in data:
                             writer.writerow(item)
-                        encrypt_data(buffer.getvalue())
-                        QtWidgets.QMessageBox.information(Dialog, "Success", "Row updated successfully!")
+                        encrypt_data(buffer)
+                        QtWidgets.QMessageBox.information(edit_dialog, "نجاح", "تم تحديث البيانات بنجاح!")
+                        edit_dialog.accept()
                         Dialog.accept()
                         self.showData()
                     except Exception as e:
-                        QtWidgets.QMessageBox.critical(Dialog, "Error", f"Failed to save changes: {str(e)}")
+                        QtWidgets.QMessageBox.critical(edit_dialog, "خطأ", f"فشل حفظ التغييرات: {str(e)}")
+                
+                submit_button.clicked.connect(submitEdit)
+                
+                # Initialize net owed calculation
+                update_net_owed()
+                
+                # Show the dialog
+                edit_dialog.exec_()
             
             # Connect the edit button's click handler
             edit_button.clicked.connect(edit_selected)
@@ -2268,7 +3037,7 @@ class Ui_Form(object):
             # No need to add it again here
 
         # Add close button to main layout
-        close_button = QtWidgets.QPushButton("Close")
+        close_button = QtWidgets.QPushButton("إغلاق")
         close_button.setStyleSheet("""
             background-color: orange;
             color: white;
@@ -2287,25 +3056,7 @@ class Ui_Form(object):
         Dialog.exec_()
         print('Dialog closed')
 
-    def delete_row(self, table, row, data):
-        # Remove row from data and update file
-        data.pop(row)
-        # Save updated data
-        from io import StringIO
-        import csv
-        fieldnames = ['provider', 'amount', 'doctor', 'amount_returned', 'medicine_types', 'order_code', 'payment_info', 'timestamp']
-        buffer = StringIO()
-        writer = csv.DictWriter(buffer, fieldnames=fieldnames)
-        writer.writeheader()
-        for item in data:
-            # Ensure all items have the payment_info field
-            if 'payment_info' not in item:
-                item['payment_info'] = ''
-            writer.writerow(item)
-        encrypt_data(buffer.getvalue())
-        table.removeRow(row)
-        # No need to update the layout or dialog here. The UI will reflect the change automatically.
-
+    # Old delete_row method removed - functionality now integrated into delete_selected function
 
 if __name__ == "__main__":
     import sys
@@ -2314,6 +3065,7 @@ if __name__ == "__main__":
 
     try:
         ensure_admin_exists()
+        ensure_suppliers_exist()
         app = QtWidgets.QApplication(sys.argv)
         login = LoginDialog()
         if login.exec_() == QtWidgets.QDialog.Accepted and login.result:
