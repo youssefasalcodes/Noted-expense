@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 :: ===========================================
-:: Pharmacy Expense Tracker - Windows Build Script
+:: Pharmacy Expense Tracker - Windows Build Script with Auto-Update Support
 :: ===========================================
 
 :: Configuration
@@ -13,11 +13,62 @@ set LOGFILE=%BUILD_DIR%\build_log.txt
 set TIMESTAMP=%DATE:/=-%_%TIME::=-%
 set TIMESTAMP=%TIMESTAMP: =0%
 
+:: GitHub Configuration (UPDATE THESE)
+set GITHUB_REPO=youssefasalcodes/Pharmacy-app
+set GITHUB_TOKEN=
+set CREATE_GITHUB_RELEASE=false
+
 :: Create necessary directories
 if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"
 if not exist "%DIST_DIR%" mkdir "%DIST_DIR%"
 
 echo [*] Starting build process at %DATE% %TIME% > "%LOGFILE%"
+
+:: ===========================================
+:: Version Management
+:: ===========================================
+
+:: Read current version from version.json
+set VERSION_FILE=%SCRIPT_DIR%version.json
+if exist "%VERSION_FILE%" (
+    echo [*] Reading current version from version.json >> "%LOGFILE%"
+    for /f "tokens=2 delims=:," %%a in ('findstr "\"version\"" "%VERSION_FILE%"') do (
+        set CURRENT_VERSION=%%a
+        set CURRENT_VERSION=!CURRENT_VERSION:" =!
+        set CURRENT_VERSION=!CURRENT_VERSION:"=!
+    )
+    echo [*] Current version: !CURRENT_VERSION! >> "%LOGFILE%"
+) else (
+    echo [*] version.json not found, using default version 1.0.0 >> "%LOGFILE%"
+    set CURRENT_VERSION=1.0.0
+)
+
+:: Parse version number
+for /f "tokens=1,2,3 delims=." %%a in ("%CURRENT_VERSION%") do (
+    set MAJOR=%%a
+    set MINOR=%%b
+    set PATCH=%%c
+)
+
+:: Increment patch version
+set /a PATCH+=1
+set NEW_VERSION=%MAJOR%.%MINOR%.%PATCH%
+
+echo [*] New version: %NEW_VERSION% >> "%LOGFILE%"
+echo [*] Bumping version from %CURRENT_VERSION% to %NEW_VERSION%
+
+:: Update version.json
+(
+echo {
+echo   "version": "%NEW_VERSION%",
+echo   "release_date": "%DATE%",
+echo   "changelog": "Update - see release notes for details",
+echo   "critical": false,
+echo   "min_required_version": "1.0.0"
+echo }
+) > "%VERSION_FILE%"
+
+echo [*] Updated version.json to %NEW_VERSION% >> "%LOGFILE%"
 
 :: Check Python version
 for /f "tokens=2,3 delims=. " %%a in ('python --version 2^>^&1') do set major=%%a & set minor=%%b & goto check_version
@@ -82,7 +133,8 @@ echo         (r"%SCRIPT_DIR%resources", 'resources'),>> %SPECFILE%
 echo         (r"%SCRIPT_DIR%Insert_data.ui", '.'),>> %SPECFILE%
 echo         (r"%SCRIPT_DIR%resources_rc.py", '.'),>> %SPECFILE%
 echo         (r"%SCRIPT_DIR%users.json", '.'),>> %SPECFILE%
-echo         (r"%SCRIPT_DIR%data.encrypted", '.')>> %SPECFILE%
+echo         (r"%SCRIPT_DIR%data.encrypted", '.'),>> %SPECFILE%
+echo         (r"%SCRIPT_DIR%version.json", '.'),>> %SPECFILE%
 echo     ],>> %SPECFILE%
 echo     hiddenimports=[],>> %SPECFILE%
 echo     hookspath=[],>> %SPECFILE%
@@ -139,6 +191,10 @@ copy "%DIST_DIR%\PharmacyExpenseTracker.exe" "%PACKAGE_DIR%\" >> "%LOGFILE%" 2>&
 :: Copy required data files
 copy "%SCRIPT_DIR%\users.json" "%PACKAGE_DIR%\" >> "%LOGFILE%" 2>&1
 copy "%SCRIPT_DIR%\data.encrypted" "%PACKAGE_DIR%\" >> "%LOGFILE%" 2>&1
+copy "%SCRIPT_DIR%\version.json" "%PACKAGE_DIR%\" >> "%LOGFILE%" 2>&1
+
+:: Copy updater module
+copy "%SCRIPT_DIR%\app_updater.py" "%PACKAGE_DIR%\" >> "%LOGFILE%" 2>&1
 
 :: Copy resources folder if needed
 xcopy /E /I /Y "%SCRIPT_DIR%\resources" "%PACKAGE_DIR%\resources" >> "%LOGFILE%" 2>&1
@@ -169,8 +225,43 @@ if %ERRORLEVEL% EQU 0 (
     echo [*] Build completed successfully! >> "%LOGFILE%"
     echo. >> "%LOGFILE%"
     echo [*] Build completed successfully!
+    echo [*] Version: %NEW_VERSION%
     echo [*] Executable: %PACKAGE_DIR%\PharmacyExpenseTracker.exe
     echo [*] Package: %DIST_DIR%\PharmacyExpenseTracker_%TIMESTAMP%.zip
+    
+    :: GitHub Release Creation (if configured)
+    if "%CREATE_GITHUB_RELEASE%"=="true" (
+        echo. >> "%LOGFILE%"
+        echo [*] Attempting to create GitHub release... >> "%LOGFILE%"
+        
+        :: Check if GitHub CLI is available
+        where gh >nul 2>&1
+        if %ERRORLEVEL% EQU 0 (
+            echo [*] GitHub CLI found, creating release... >> "%LOGFILE%"
+            
+            :: Create release with GitHub CLI
+            if defined GITHUB_TOKEN (
+                gh release create v%NEW_VERSION% "%DIST_DIR%\PharmacyExpenseTracker_%TIMESTAMP%.zip" --repo %GITHUB_REPO% --title "Pharmacy Expense Tracker v%NEW_VERSION%" --notes "Release version %NEW_VERSION%" --token %GITHUB_TOKEN% >> "%LOGFILE%" 2>&1
+            ) else (
+                gh release create v%NEW_VERSION% "%DIST_DIR%\PharmacyExpenseTracker_%TIMESTAMP%.zip" --repo %GITHUB_REPO% --title "Pharmacy Expense Tracker v%NEW_VERSION%" --notes "Release version %NEW_VERSION%" >> "%LOGFILE%" 2>&1
+            )
+            
+            if %ERRORLEVEL% EQU 0 (
+                echo [*] GitHub release created successfully! >> "%LOGFILE%"
+                echo [*] GitHub release v%NEW_VERSION% created successfully!
+            ) else (
+                echo [ERROR] Failed to create GitHub release >> "%LOGFILE%"
+                echo [ERROR] Failed to create GitHub release
+                echo [*] You can manually create the release using: >> "%LOGFILE%"
+                echo gh release create v%NEW_VERSION% "%DIST_DIR%\PharmacyExpenseTracker_%TIMESTAMP%.zip" --repo %GITHUB_REPO% >> "%LOGFILE%"
+            )
+        ) else (
+            echo [*] GitHub CLI not found >> "%LOGFILE%"
+            echo [*] GitHub CLI not found. Install from https://cli.github.com/
+            echo [*] To create release manually, use: >> "%LOGFILE%"
+            echo gh release create v%NEW_VERSION% "%DIST_DIR%\PharmacyExpenseTracker_%TIMESTAMP%.zip" --repo %GITHUB_REPO% >> "%LOGFILE%"
+        )
+    )
 ) else (
     echo [ERROR] Failed to create ZIP archive >> "%LOGFILE%"
     echo [ERROR] Failed to create ZIP archive

@@ -2,9 +2,13 @@
 PyQt5==5.15.2
 cryptography==3.4.7
 bcrypt==4.1.2
+requests==2.31.0  # Required for update system and GitHub API
 
 # Windows-specific Dependencies
 pywin32==306  # Required for Windows-specific functionality
+
+# Optional Security Dependencies
+pyarmor==8.0.0  # Optional: For code obfuscation (install with: pip install pyarmor)
 
 # Required Files (must be in the same directory as the main script):
 # - Test.py (main application file)

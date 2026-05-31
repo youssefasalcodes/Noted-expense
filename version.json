@@ -1,0 +1,7 @@
+{
+  "version": " 1.0.6",
+  "release_date": "Sun 05/31/2026",
+  "changelog": "Security update - enhanced code protection",
+  "critical": false,
+  "min_required_version": "1.0.0"
+}

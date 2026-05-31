@@ -14,6 +14,12 @@ import datetime
 from PyQt5 import QtCore, QtGui, QtWidgets
 import os
 import sys
+try:
+    from app_updater import UpdateChecker, check_for_updates_on_startup, show_update_dialog
+    UPDATER_AVAILABLE = True
+except ImportError:
+    UPDATER_AVAILABLE = False
+    print("Updater module not available")
 
 # Compile resources if running directly
 if __name__ == '__main__':
@@ -184,8 +190,57 @@ class SupplierManagerDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('إدارة الموردين')
-        self.setMinimumSize(500, 400)
+        self.setMinimumSize(600, 400)
+        self.setStyleSheet("""
+            QDialog {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+                    stop:0 rgba(30, 58, 138, 0.95), 
+                    stop:1 rgba(30, 64, 175, 0.98));
+            }
+            QLabel {
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QListWidget {
+                background-color: white;
+                border-radius: 12px;
+                color: #1E3A8A;
+                font-size: 14px;
+                border: 2px solid rgba(255, 255, 255, 0.2);
+                padding: 8px;
+            }
+            QListWidget::item {
+                padding: 12px 16px;
+                border-radius: 6px;
+                margin: 4px;
+                background-color: rgba(245, 245, 245, 0.5);
+            }
+            QListWidget::item:selected {
+                background-color: rgba(255, 255, 255, 0.3);
+                color: #1E3A8A;
+                font-weight: bold;
+            }
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #10B981, stop:1 #059669);
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 10px 20px;
+                border-radius: 8px;
+                border: 2px solid rgba(255, 255, 255, 0.3);
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #34D399, stop:1 #10B981);
+                border: 2px solid rgba(255, 255, 255, 0.6);
+                
+            }
+        """)
         layout = QtWidgets.QVBoxLayout(self)
+        layout.setSpacing(20)
+        layout.setContentsMargins(25, 25, 25, 25)
         
         # Supplier list widget
         self.supplier_list = QtWidgets.QListWidget(self)
@@ -194,17 +249,18 @@ class SupplierManagerDialog(QtWidgets.QDialog):
                 font-size: 14px;
                 font-weight: bold;
                 padding: 5px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
+                border: 2px solid #E2E8F0;
+                border-radius: 8px;
                 background-color: white;
             }
             QListWidget::item {
                 padding: 8px;
-                border-bottom: 1px solid #eee;
+                border-bottom: 1px solid #E2E8F0;
+                color: #1E3A8A;
             }
             QListWidget::item:selected {
-                background-color: #e3f2fd;
-                color: #1976d2;
+                background-color: #1E3A8A;
+                color: white;
             }
         """)
         layout.addWidget(self.supplier_list)
@@ -215,15 +271,20 @@ class SupplierManagerDialog(QtWidgets.QDialog):
         self.add_btn = QtWidgets.QPushButton('إضافة مورد', self)
         self.add_btn.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #10B981, stop:1 #059669);
                 color: white;
                 font-weight: bold;
                 font-size: 14px;
-                padding: 8px 16px;
-                border-radius: 4px;
+                padding: 10px 20px;
+                border-radius: 8px;
+                border: 2px solid rgba(255, 255, 255, 0.3);
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #34D399, stop:1 #10B981);
+                border: 2px solid rgba(255, 255, 255, 0.6);
+                
             }
         """)
         self.add_btn.clicked.connect(self.add_supplier)
@@ -232,15 +293,20 @@ class SupplierManagerDialog(QtWidgets.QDialog):
         self.edit_btn = QtWidgets.QPushButton('تعديل', self)
         self.edit_btn.setStyleSheet("""
             QPushButton {
-                background-color: #2196F3;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #1E3A8A, stop:1 #1E40AF);
                 color: white;
                 font-weight: bold;
                 font-size: 14px;
-                padding: 8px 16px;
-                border-radius: 4px;
+                padding: 10px 20px;
+                border-radius: 8px;
+                border: 2px solid rgba(255, 255, 255, 0.3);
             }
             QPushButton:hover {
-                background-color: #1565C0;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #2563EB, stop:1 #1E3A8A);
+                border: 2px solid rgba(255, 255, 255, 0.6);
+                
             }
         """)
         self.edit_btn.clicked.connect(self.edit_supplier)
@@ -249,15 +315,20 @@ class SupplierManagerDialog(QtWidgets.QDialog):
         self.delete_btn = QtWidgets.QPushButton('حذف', self)
         self.delete_btn.setStyleSheet("""
             QPushButton {
-                background-color: #f44336;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #DC2626, stop:1 #B91C1C);
                 color: white;
                 font-weight: bold;
                 font-size: 14px;
-                padding: 8px 16px;
-                border-radius: 4px;
+                padding: 10px 20px;
+                border-radius: 8px;
+                border: 2px solid rgba(255, 255, 255, 0.3);
             }
             QPushButton:hover {
-                background-color: #e53935;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #EF4444, stop:1 #DC2626);
+                border: 2px solid rgba(255, 255, 255, 0.6);
+                
             }
         """)
         self.delete_btn.clicked.connect(self.delete_supplier)
@@ -368,11 +439,90 @@ class LoginDialog(QtWidgets.QDialog):
         super().__init__()
         self.setWindowTitle('تسجيل الدخول')
         self.setModal(True)
-        self.setFixedSize(300, 180)
+        self.setFixedSize(480, 400)
+        self.setStyleSheet("""
+            QDialog {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+                    stop:0 rgba(30, 58, 138, 0.95), 
+                    stop:1 rgba(30, 64, 175, 0.98));
+            }
+            QLabel {
+                color: white;
+                font-weight: bold;
+                font-size: 16px;
+            }
+            QLineEdit {
+                background-color: white;
+                color: #1E3A8A;
+                border-radius: 8px;
+                padding: 15px 18px;
+                border: 2px solid rgba(255, 255, 255, 0.3);
+                font-size: 16px;
+                min-height: 50px;
+                font-weight: bold;
+            }
+            QLineEdit:focus {
+                border: 2px solid rgba(255, 255, 255, 0.6);
+            }
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #10B981, stop:1 #059669);
+                color: white;
+                font-weight: bold;
+                font-size: 16px;
+                border-radius: 8px;
+                padding: 15px 30px;
+                border: 2px solid rgba(255, 255, 255, 0.3);
+                min-height: 50px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #34D399, stop:1 #10B981);
+                border: 2px solid rgba(255, 255, 255, 0.6);
+                
+            }
+            QComboBox {
+                background-color: white;
+                color: #1E3A8A;
+                border-radius: 8px;
+                padding: 15px 18px;
+                border: 2px solid rgba(255, 255, 255, 0.3);
+                font-size: 16px;
+                min-height: 50px;
+                font-weight: bold;
+            }
+            QComboBox:focus {
+                border: 2px solid rgba(255, 255, 255, 0.6);
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 30px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 8px solid #64748B;
+                width: 0;
+                height: 0;
+            }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: #1E3A8A;
+                selection-background-color: #1E3A8A;
+                selection-color: white;
+                border: 1px solid #E2E8F0;
+                border-radius: 5px;
+            }
+        """)
         layout = QtWidgets.QVBoxLayout(self)
+        layout.setSpacing(15)
+        layout.setContentsMargins(30, 30, 30, 30)
+        
         # Username ComboBox
         self.userCombo = QtWidgets.QComboBox(self)
         self.userCombo.setEditable(False)
+        self.userCombo.setMinimumHeight(55)
         users = load_users()
         usernames = [user['username'] for user in users]
         self.userCombo.addItems(usernames)
@@ -380,13 +530,17 @@ class LoginDialog(QtWidgets.QDialog):
         self.passEdit = QtWidgets.QLineEdit(self)
         self.passEdit.setPlaceholderText('كلمة المرور')
         self.passEdit.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.passEdit.setMinimumHeight(55)
         self.loginBtn = QtWidgets.QPushButton('تسجيل الدخول', self)
         self.loginBtn.clicked.connect(self.login)
+        
         layout.addWidget(QtWidgets.QLabel('اسم المستخدم:'))
         layout.addWidget(self.userCombo)
+        layout.addSpacing(10)
         layout.addWidget(QtWidgets.QLabel('كلمة المرور:'))
         layout.addWidget(self.passEdit)
-        layout.addWidget(self.loginBtn)
+        layout.addSpacing(20)
+        layout.addWidget(self.loginBtn, alignment=QtCore.Qt.AlignCenter)
         self.result = None
     def login(self):
         users = load_users()
@@ -404,12 +558,70 @@ class UserManagerDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('إدارة المستخدمين')
-        self.setMinimumSize(400, 300)
+        self.setMinimumSize(600, 400)
+        self.setStyleSheet("""
+            QDialog {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+                    stop:0 rgba(30, 58, 138, 0.95), 
+                    stop:1 rgba(30, 64, 175, 0.98));
+            }
+            QLabel {
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QTableWidget {
+                background-color: white;
+                border-radius: 12px;
+                color: #1E3A8A;
+                font-size: 13px;
+                border: 2px solid rgba(255, 255, 255, 0.2);
+            }
+            QTableWidget::item {
+                padding: 12px;
+                border: none;
+            }
+            QTableWidget::item:selected {
+                background-color: rgba(255, 255, 255, 0.3);
+                color: #1E3A8A;
+                font-weight: bold;
+            }
+            QHeaderView::section {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #1E3A8A, stop:1 #1E40AF);
+                color: white;
+                font-weight: bold;
+                font-size: 13px;
+                padding: 12px;
+                border: none;
+                border-radius: 8px;
+            }
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #10B981, stop:1 #059669);
+                color: white;
+                font-weight: bold;
+                font-size: 13px;
+                padding: 8px 16px;
+                border-radius: 8px;
+                border: 2px solid rgba(255, 255, 255, 0.3);
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #34D399, stop:1 #10B981);
+                border: 2px solid rgba(255, 255, 255, 0.6);
+                
+            }
+        """)
         layout = QtWidgets.QVBoxLayout(self)
+        layout.setSpacing(20)
+        layout.setContentsMargins(25, 25, 25, 25)
+        
         self.table = QtWidgets.QTableWidget(self)
         self.table.setColumnCount(3)
         self.table.setHorizontalHeaderLabels(['اسم المستخدم', 'الدور', 'تغيير كلمة المرور'])
         layout.addWidget(self.table)
+        
         self.addBtn = QtWidgets.QPushButton('إضافة مستخدم', self)
         self.addBtn.clicked.connect(self.add_user)
         layout.addWidget(self.addBtn)
@@ -422,13 +634,67 @@ class UserManagerDialog(QtWidgets.QDialog):
             self.table.setItem(i, 0, QtWidgets.QTableWidgetItem(user['username']))
             self.table.setItem(i, 1, QtWidgets.QTableWidgetItem(user['role']))
             btn = QtWidgets.QPushButton('تغيير كلمة المرور', self)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #1E3A8A, stop:1 #1E40AF);
+                    color: white;
+                    font-weight: bold;
+                    font-size: 11px;
+                    padding: 6px 10px;
+                    border-radius: 6px;
+                    border: 2px solid rgba(255, 255, 255, 0.3);
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #2563EB, stop:1 #1E3A8A);
+                    border: 2px solid rgba(255, 255, 255, 0.6);
+                    
+                }
+            """)
             btn.clicked.connect(lambda _, u=user['username']: self.change_pw(u))
             self.table.setCellWidget(i, 2, btn)
             # Add Rename button if not self
             rename_btn = QtWidgets.QPushButton('إعادة التسمية', self)
+            rename_btn.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #64748B, stop:1 #475569);
+                    color: white;
+                    font-weight: bold;
+                    font-size: 11px;
+                    padding: 6px 10px;
+                    border-radius: 6px;
+                    border: 2px solid rgba(255, 255, 255, 0.3);
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #94A3B8, stop:1 #64748B);
+                    border: 2px solid rgba(255, 255, 255, 0.6);
+                    
+                }
+            """)
             rename_btn.clicked.connect(lambda _, u=user['username']: self.rename_user(u))
             # Add Delete button if not self
             del_btn = QtWidgets.QPushButton('حذف', self)
+            del_btn.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #DC2626, stop:1 #B91C1C);
+                    color: white;
+                    font-weight: bold;
+                    font-size: 11px;
+                    padding: 6px 10px;
+                    border-radius: 6px;
+                    border: 2px solid rgba(255, 255, 255, 0.3);
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #EF4444, stop:1 #DC2626);
+                    border: 2px solid rgba(255, 255, 255, 0.6);
+                    
+                }
+            """)
             if user['username'] == current_admin:
                 del_btn.setEnabled(False)
                 del_btn.setToolTip('لا يمكن حذف المشرف الحالي')
@@ -637,62 +903,126 @@ def add_data(current_user=None):
     Dialog.setMinimumSize(int(width * 0.8), int(height * 0.8))
     Dialog.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
     
+    # Set green background and styling directly on dialog after setup
+    Dialog.setStyleSheet("""
+        background-color: #F8FAFC;
+        QLabel {
+            color: #64748B;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        QLineEdit, QComboBox {
+            background-color: white;
+            color: #1E3A8A;
+            font-weight: bold;
+            font-size: 14px;
+            padding: 12px 16px;
+            border: 2px solid #E2E8F0;
+            border-radius: 8px;
+        }
+        QLineEdit:focus, QComboBox:focus {
+            border: 2px solid #1E3A8A;
+            background-color: white;
+        }
+        QLineEdit:disabled {
+            background-color: #F1F5F9;
+            color: #94A3B8;
+        }
+        QTableWidget {
+            background-color: white;
+            color: #1E3A8A;
+            font-weight: bold;
+            font-size: 13px;
+            border: 2px solid #E2E8F0;
+            border-radius: 8px;
+            gridline-color: #E2E8F0;
+        }
+        QTableWidget::item {
+            padding: 12px;
+            border: none;
+            border-radius: 0px;
+            background-color: white;
+        }
+        QTableWidget::item:selected {
+            background-color: #1E3A8A;
+            color: white;
+            font-weight: bold;
+        }
+        QTableWidget::item:focus {
+            background-color: #3B82F6;
+            color: white;
+        }
+        QHeaderView::section {
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 #1E3A8A, stop:1 #1E40AF);
+            color: white;
+            font-weight: bold;
+            font-size: 13px;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 8px 8px 0 0;
+        }
+        QGroupBox {
+            font-size: 15px;
+            font-weight: bold;
+            border: 2px solid #E2E8F0;
+            border-radius: 12px;
+            margin-top: 20px;
+            padding-top: 20px;
+            background-color: white;
+            color: #1E3A8A;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 12px;
+            padding: 0 8px 0 8px;
+            color: #1E3A8A;
+        }
+        QPushButton {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #1E3A8A, stop:1 #1E40AF);
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            border: 2px solid #1E3A8A;
+        }
+        QPushButton:hover {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #2563EB, stop:1 #1E3A8A);
+            border: 2px solid #2563EB;
+        }
+        QPushButton:pressed {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #1E40AF, stop:1 #1E3A8A);
+        }
+        QRadioButton {
+            color: #64748B;
+            font-size: 14px;
+            spacing: 8px;
+            padding: 8px 12px;
+            font-weight: bold;
+        }
+        QRadioButton::indicator {
+            width: 18px;
+            height: 18px;
+        }
+        QRadioButton:hover {
+            background-color: #F1F5F9;
+            border-radius: 4px;
+        }
+    """)
+    
     Dialog.exec_()
 
 
 class Ui_Dialog(object):
     def setupUi2(self, Dialog):
         Dialog.setObjectName("Dialog")
-        Dialog.resize(700, 500)
+        Dialog.resize(800, 600)
         Dialog.setWindowTitle("إضافة بيانات - متتبع الأسعار")
-        Dialog.setStyleSheet("""
-            QWidget {
-                background-color: white;
-            }
-            QLabel {
-                color: black;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QLineEdit, QComboBox, QTableWidget {
-                background-color: white;
-                color: black;
-                font-weight: bold;
-                font-size: 14px;
-                padding: 8px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-            }
-            QPushButton {
-                background-color: white;
-                color: black;
-                font-weight: bold;
-                font-size: 14px;
-                padding: 8px 16px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #f0f0f0;
-            }
-            QTableWidget::item {
-                border: 1px solid #ccc;
-                padding: 8px;
-            }
-            QTableWidget::item:selected {
-                background-color: #f0f0f0;
-                color: black;
-            }
-            QHeaderView::section {
-                background-color: #f0f0f0;
-                color: black;
-                font-weight: bold;
-                font-size: 14px;
-                padding: 8px;
-                border: 1px solid #ccc;
-            }
-        """)
-
+        Dialog.setLayoutDirection(QtCore.Qt.RightToLeft)  # Set RTL for Arabic
         # Main vertical layout
         main_layout = QtWidgets.QVBoxLayout(Dialog)
         main_layout.setContentsMargins(20, 20, 20, 20)
@@ -706,17 +1036,52 @@ class Ui_Dialog(object):
         self.comboBox = QtWidgets.QComboBox(Dialog)
         suppliers = load_suppliers()
         self.comboBox.addItems(["اختر المورد"] + suppliers)
+        self.comboBox.setStyleSheet("""
+            QComboBox {
+                background-color: white;
+                color: #1E3A8A;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 12px 16px;
+                border: 2px solid #E2E8F0;
+                border-radius: 8px;
+            }
+            QComboBox:focus {
+                border: 2px solid #1E3A8A;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 30px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 8px solid #64748B;
+                width: 0;
+                height: 0;
+            }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: #1E3A8A;
+                selection-background-color: #1E3A8A;
+                selection-color: white;
+                border: 1px solid #E2E8F0;
+                border-radius: 5px;
+            }
+        """)
         
         # Add outstanding balance label
         self.outstanding_balance_label = QtWidgets.QLabel("الرصيد المستحق: 0.00")
         self.outstanding_balance_label.setStyleSheet("""
-            font-size: 14px;
+            font-size: 15px;
             font-weight: bold;
-            color: #d32f2f;
-            padding: 5px 10px;
-            background-color: #f8f8f8;
-            border: 1px solid #e0e0e0;
-            border-radius: 4px;
+            color: #DC2626;
+            padding: 12px 16px;
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                stop:0 #FEF2F2, stop:1 #FEE2E2);
+            border: 2px solid #FCA5A5;
+            border-radius: 8px;
         """)
         self.outstanding_balance_label.hide()  # Hide initially
         
@@ -755,7 +1120,20 @@ class Ui_Dialog(object):
         self.textEdit.setValidator(QtGui.QDoubleValidator())
         self.textEdit.textChanged.connect(self.clearPlaceholder)
         self.textEdit.setMinimumHeight(40)
-        self.textEdit.setStyleSheet("font-size: 16px;")
+        self.textEdit.setStyleSheet("""
+            QLineEdit {
+                background-color: white;
+                color: #1E3A8A;
+                font-weight: bold;
+                font-size: 16px;
+                padding: 12px 16px;
+                border: 2px solid #E2E8F0;
+                border-radius: 8px;
+            }
+            QLineEdit:focus {
+                border: 2px solid #1E3A8A;
+            }
+        """)
         row_layout.addWidget(self.textEdit, 2)
 
         main_layout.addLayout(row_layout)
@@ -768,8 +1146,17 @@ class Ui_Dialog(object):
         self.amountReturnedLabel = QtWidgets.QLabel(Dialog)
         self.amountReturnedLabel.setObjectName("amountReturnedLabel")
         self.amountReturnedLabel.setText("إجمالي قيمة المرتجع: 0.00")
-        self.amountReturnedLabel.setMinimumHeight(40)
-        self.amountReturnedLabel.setStyleSheet("font-size: 16px; background: #f0f0f0; border: 1px solid #ccc; padding: 8px;")
+        self.amountReturnedLabel.setMinimumHeight(45)
+        self.amountReturnedLabel.setStyleSheet("""
+            font-size: 16px;
+            font-weight: bold;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 #F1F5F9, stop:1 #E2E8F0);
+            border: 2px solid #64748B;
+            padding: 12px 16px;
+            color: #1E3A8A;
+            border-radius: 8px;
+        """)
         row_layout2.addWidget(self.amountReturnedLabel, 2)
         
         # Order Code Input
@@ -777,7 +1164,20 @@ class Ui_Dialog(object):
         self.orderCodeEdit.setObjectName("orderCodeEdit")
         self.orderCodeEdit.setPlaceholderText("رقم الفاتورة")
         self.orderCodeEdit.setMinimumHeight(40)
-        self.orderCodeEdit.setStyleSheet("font-size: 16px;")
+        self.orderCodeEdit.setStyleSheet("""
+            QLineEdit {
+                background-color: white;
+                color: #1E3A8A;
+                font-weight: bold;
+                font-size: 16px;
+                padding: 12px 16px;
+                border: 2px solid #E2E8F0;
+                border-radius: 8px;
+            }
+            QLineEdit:focus {
+                border: 2px solid #1E3A8A;
+            }
+        """)
         # Set validator for 10-digit number
         self.orderCodeEdit.setValidator(QtGui.QRegExpValidator(QtCore.QRegExp(r'^\d{1,10}$')))
         row_layout2.addWidget(self.orderCodeEdit, 2)
@@ -788,17 +1188,20 @@ class Ui_Dialog(object):
         payment_group = QtWidgets.QGroupBox("خيارات الدفع")
         payment_group.setStyleSheet("""
             QGroupBox {
-                font-size: 14px;
+                font-size: 15px;
                 font-weight: bold;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                margin-top: 10px;
-                padding-top: 15px;
+                border: 2px solid #E2E8F0;
+                border-radius: 12px;
+                margin-top: 20px;
+                padding-top: 20px;
+                background-color: white;
+                color: #1E3A8A;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 3px 0 3px;
+                left: 12px;
+                padding: 0 8px 0 8px;
+                color: #1E3A8A;
             }
         """)
         
@@ -818,16 +1221,17 @@ class Ui_Dialog(object):
         radio_style = """
             QRadioButton {
                 font-size: 14px;
-                color: #333333;
+                color: #64748B;
                 spacing: 5px;
                 padding: 5px 8px;
+                font-weight: bold;
             }
             QRadioButton::indicator {
                 width: 16px;
                 height: 16px;
             }
             QRadioButton:hover {
-                background-color: #f0f0f0;
+                background-color: #F1F5F9;
                 border-radius: 4px;
             }
         """
@@ -856,46 +1260,45 @@ class Ui_Dialog(object):
         self.payment_amount_input.setValidator(QtGui.QDoubleValidator(0, 999999.99, 2))
         self.payment_amount_input.setStyleSheet("""
             QLineEdit {
+                background-color: white;
+                color: #1E3A8A;
+                font-weight: bold;
                 font-size: 14px;
-                padding: 5px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
+                padding: 12px 16px;
+                border: 2px solid #E2E8F0;
+                border-radius: 8px;
                 min-width: 100px;
             }
+            QLineEdit:focus {
+                border: 2px solid #1E3A8A;
+            }
             QLineEdit:disabled {
-                background-color: #f5f5f5;
-                color: #888;
+                background-color: #F1F5F9;
+                color: #94A3B8;
             }
         """)
         
-        # Net owed label with improved styling
-        self.net_owed_label = QtWidgets.QLabel("باقي المديونية للشركة: 0.00")
-        self.net_owed_label.setStyleSheet("""
-            font-size: 14px;
-            font-weight: bold;
-            padding: 5px 10px;
-            background-color: #f8f8f8;
-            border: 1px solid #e0e0e0;
-            border-radius: 4px;
-            min-width: 300px;
-            text-align: center;
-        """)
+        # Net owed label
+        self.net_owed_label_text = QtWidgets.QLabel("باقي المديونية للشركة:")
+        self.net_owed_label_text.setStyleSheet("font-size: 14px; min-width: 100px;")
+
+        # Net owed input field with same styling as payment amount input
+        self.net_owed_label = QtWidgets.QLineEdit()
+        self.net_owed_label.setText("0.00")
+        self.net_owed_label.setReadOnly(True)
+        self.net_owed_label.setValidator(QtGui.QDoubleValidator(0, 999999.99, 2))
+        self.net_owed_label.setStyleSheet("QLineEdit { background-color: white; color: #1E3A8A; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #E2E8F0; border-radius: 8px; min-width: 100px; } QLineEdit:focus { border: 2px solid #1E3A8A; } QLineEdit:disabled { background-color: #F1F5F9; color: #94A3B8; }")
         
-        # Add widgets to payment amount layout with better spacing
-        self.payment_amount_layout.addWidget(self.payment_amount_label)
-        self.payment_amount_layout.addWidget(self.payment_amount_input, 1)  # Add stretch factor
+        # Add widgets to payment amount layout with better spacing - RTL order
+        self.payment_amount_layout.addWidget(self.payment_amount_label)  # Label first in RTL
+        self.payment_amount_layout.addWidget(self.payment_amount_input, 1)  # Input second in RTL
         
         # Add a stretchable space before net owed
-        self.payment_amount_layout.addStretch(2)
+        self.payment_amount_layout.addStretch(1)
         
-        # Create a container for the net owed label to improve alignment
-        net_owed_container = QtWidgets.QFrame()
-        net_owed_container.setStyleSheet("background: transparent;")
-        net_owed_layout = QtWidgets.QHBoxLayout(net_owed_container)
-        net_owed_layout.setContentsMargins(0, 0, 0, 0)
-        net_owed_layout.addWidget(self.net_owed_label)
-        
-        self.payment_amount_layout.addWidget(net_owed_container, 1)  # Add stretch factor
+        # Add net owed label and input - RTL order
+        self.payment_amount_layout.addWidget(self.net_owed_label_text)  # Label first in RTL
+        self.payment_amount_layout.addWidget(self.net_owed_label, 1)  # Input second in RTL
         
         # Add radio buttons and payment amount layout to payment layout
         payment_layout.addLayout(radio_button_layout)
@@ -951,9 +1354,21 @@ class Ui_Dialog(object):
             except Exception as e:
                 print(f"Error formatting currency: {e}")
         
+        # Clear field on focus
+        def clear_on_focus():
+            self.payment_amount_input.clear()
+        
         # Connect the formatting function to editingFinished signal
         self.payment_amount_input.editingFinished.connect(format_currency)
         self.payment_amount_input.editingFinished.connect(self.update_net_owed)
+        
+        # Override focusInEvent to clear text when field gets focus
+        original_focus_in_event = self.payment_amount_input.focusInEvent
+        def custom_focus_in_event(event):
+            self.payment_amount_input.clear()
+            original_focus_in_event(event)
+        
+        self.payment_amount_input.focusInEvent = custom_focus_in_event
         
         # Add payment group to main layout
         main_layout.addWidget(payment_group)
@@ -987,10 +1402,19 @@ class Ui_Dialog(object):
             # Check if returned amount exceeds order amount
             if total > order_amount and order_amount > 0:
                 self.amountReturnedLabel.setText(f"إجمالي قيمة المرتجع: {total:.2f} (يتجاوز قيمة الطلب!)")
-                self.amountReturnedLabel.setStyleSheet("font-size: 16px; background: #ffebee; border: 2px solid #f44336; padding: 8px; color: #c62828;")
+                self.amountReturnedLabel.setStyleSheet("font-size: 16px; background: #FEF2F2; border: 2px solid #DC2626; padding: 8px; color: #DC2626; border-radius: 8px;")
             else:
                 self.amountReturnedLabel.setText(f"إجمالي قيمة المرتجع: {total:.2f}")
-                self.amountReturnedLabel.setStyleSheet("font-size: 16px; background: #f0f0f0; border: 1px solid #ccc; padding: 8px;")
+                self.amountReturnedLabel.setStyleSheet("""
+                    font-size: 16px;
+                    font-weight: bold;
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #F1F5F9, stop:1 #E2E8F0);
+                    border: 2px solid #64748B;
+                    padding: 12px 16px;
+                    color: #1E3A8A;
+                    border-radius: 8px;
+                """)
             
             self.update_net_owed()
 
@@ -1004,13 +1428,16 @@ class Ui_Dialog(object):
 
             def createEditor(self, parent, option, index):
                 editor = super().createEditor(parent, option, index)
-                editor.setMinimumHeight(32)  # Match row height
+                editor.setMinimumHeight(40)  # Match row height
                 editor.setStyleSheet("""
                     QLineEdit {
-                        font-size: 14px;
-                        padding: 4px;
-                        border: 1px solid #ccc;
+                        font-size: 13px;
+                        padding: 8px;
+                        border: 1px solid #1E3A8A;
                         border-radius: 4px;
+                        background-color: white;
+                        color: #1E3A8A;
+                        font-weight: bold;
                     }
                 """)
                 
@@ -1047,26 +1474,44 @@ class Ui_Dialog(object):
         self.medicineTable.setItemDelegate(delegate)
         
         # Set fixed row height
-        self.medicineTable.verticalHeader().setDefaultSectionSize(32)
-        self.medicineTable.verticalHeader().setMinimumSectionSize(32)
+        self.medicineTable.verticalHeader().setDefaultSectionSize(40)
+        self.medicineTable.verticalHeader().setMinimumSectionSize(40)
         
         # Set proper cell padding and alignment
         self.medicineTable.setStyleSheet("""
             QTableWidget {
-                font-size: 21px;
+                font-size: 13px;
+                gridline-color: #E2E8F0;
+                background-color: white;
+                border: 2px solid #E2E8F0;
+                border-radius: 8px;
             }
             QTableWidget::item {
-                height: 32px;
-                padding: 4px;
-                border: 1px solid #ccc;
+                height: 35px;
+                padding: 8px;
+                border: none;
+                border-radius: 0px;
+                background-color: white;
+                color: #1E3A8A;
+            }
+            QTableWidget::item:selected {
+                background-color: #1E3A8A;
+                color: white;
+                font-weight: bold;
+            }
+            QTableWidget::item:focus {
+                background-color: #3B82F6;
+                color: white;
             }
             QHeaderView::section {
-                background-color: #f0f0f0;
-                color: black;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #1E3A8A, stop:1 #1E40AF);
+                color: white;
                 font-weight: bold;
-                font-size: 21px;
-                padding: 8px;
-                border: 1px solid #ccc;
+                font-size: 13px;
+                padding: 10px;
+                border: 1px solid #1E3A8A;
+                border-radius: 0px;
             }
         """)
         
@@ -1075,11 +1520,43 @@ class Ui_Dialog(object):
         # Add/Remove row buttons
         btn_layout = QtWidgets.QHBoxLayout()
         self.addRowBtn = QtWidgets.QPushButton("إضافة", Dialog)
-        self.addRowBtn.setStyleSheet("background-color: #90ee90; font-size: 14px;")
+        self.addRowBtn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #1E3A8A, stop:1 #1E40AF);
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 10px 20px;
+                border-radius: 8px;
+                border: 2px solid #1E3A8A;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #2563EB, stop:1 #1E3A8A);
+                border: 2px solid #2563EB;
+            }
+        """)
         self.addRowBtn.clicked.connect(self.addMedicineRow)
         btn_layout.addWidget(self.addRowBtn)
         self.removeRowBtn = QtWidgets.QPushButton("حذف المحدد", Dialog)
-        self.removeRowBtn.setStyleSheet("background-color: #ff7f7f; font-size: 14px;")
+        self.removeRowBtn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #64748B, stop:1 #475569);
+                color: white;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 10px 20px;
+                border-radius: 8px;
+                border: 2px solid #64748B;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #94A3B8, stop:1 #64748B);
+                border: 2px solid #94A3B8;
+            }
+        """)
         self.removeRowBtn.clicked.connect(self.removeMedicineRow)
         btn_layout.addWidget(self.removeRowBtn)
         main_layout.addLayout(btn_layout)
@@ -1088,8 +1565,29 @@ class Ui_Dialog(object):
         self.submit_button = QtWidgets.QPushButton(Dialog)
         self.submit_button.setObjectName("submit_button")
         self.submit_button.clicked.connect(self.submitData)
-        self.submit_button.setStyleSheet("background-color: orange; font-size: 16px;")
-        self.submit_button.setMinimumHeight(40)
+        self.submit_button.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #10B981, stop:1 #059669);
+                color: white;
+                font-weight: bold;
+                font-size: 18px;
+                padding: 15px 30px;
+                border-radius: 12px;
+                border: 2px solid #10B981;
+                min-width: 200px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #34D399, stop:1 #10B981);
+                border: 2px solid #34D399;
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #059669, stop:1 #047857);
+            }
+        """)
+        self.submit_button.setMinimumHeight(50)
         main_layout.addWidget(self.submit_button, alignment=QtCore.Qt.AlignCenter)
 
         self.retranslateUi(Dialog)
@@ -1147,13 +1645,14 @@ class Ui_Dialog(object):
                 payment_amount = 0.0
                 net_owed = net_amount_before_payment
             
-            # Update the net owed label with color coding
+            # Update the net owed field with color coding
+            self.net_owed_label.setText(f"{net_owed:.2f}")
             if net_owed > 0:
-                self.net_owed_label.setStyleSheet("color: #d32f2f; font-weight: bold;")
+                self.net_owed_label.setStyleSheet("QLineEdit { background-color: #FEF2F2; color: #DC2626; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #FCA5A5; border-radius: 8px; min-width: 100px; } QLineEdit:focus { border: 2px solid #DC2626; } QLineEdit:disabled { background-color: #FEE2E2; color: #FCA5A5; }")
             else:
-                self.net_owed_label.setStyleSheet("color: #388e3c; font-weight: bold;")
+                self.net_owed_label.setStyleSheet("QLineEdit { background-color: white; color: #1E3A8A; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #E2E8F0; border-radius: 8px; min-width: 100px; } QLineEdit:focus { border: 2px solid #1E3A8A; } QLineEdit:disabled { background-color: #F1F5F9; color: #94A3B8; }")
                 
-            self.net_owed_label.setText(f" باقي المديونية للشركة {net_owed:.2f}")
+            self.net_owed_label.setText(f"{net_owed:.2f}")
             
             # Update payment amount input to reflect any corrections
             if self.partial_radio.isChecked():
@@ -1171,7 +1670,7 @@ class Ui_Dialog(object):
             
         except Exception as e:
             print(f"Error calculating net owed: {e}")
-            self.net_owed_label.setText("مديونية للشركة: خطأ")
+            self.net_owed_label.setText("خطأ")
             self.payment_info = {
                 'type': 'error',
                 'amount_paid': 0.0,
@@ -1345,6 +1844,10 @@ class Ui_Form(object):
         # Update background label size when window is resized
         self.background_label.setGeometry(0, 0, self.Form.width(), self.Form.height())
         
+        # Update overlay size when window is resized
+        if hasattr(self, 'overlay'):
+            self.overlay.setGeometry(0, 0, self.Form.width(), self.Form.height())
+        
         # Call the original resize event
         event.accept()
 
@@ -1390,10 +1893,18 @@ class Ui_Form(object):
         self.background_label.setScaledContents(True)  # This will scale the image to fit the label
         self.background_label.lower()  # Send it to the back
         
-        # Create a semi-transparent white overlay
-        overlay = QtWidgets.QWidget(Form)
-        overlay.setGeometry(0, 0, Form.width(), Form.height())
-        overlay.setStyleSheet("background-color: rgba(255, 255, 255, 0.7);")  # 70% opacity white
+        # Create modern gradient overlay
+        self.overlay = QtWidgets.QWidget(Form)
+        self.overlay.setGeometry(0, 0, Form.width(), Form.height())
+        self.overlay.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.overlay.setStyleSheet("""
+            QWidget {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
+                    stop:0 rgba(30, 58, 138, 0.85), 
+                    stop:0.5 rgba(30, 64, 175, 0.88), 
+                    stop:1 rgba(30, 58, 138, 0.92));
+            }
+        """)
         
         # Create main layout
         layout = QtWidgets.QVBoxLayout(Form)
@@ -1407,54 +1918,66 @@ class Ui_Form(object):
         # Add top spacer
         layout.addItem(top_spacer)
         
-        # Create a widget to center the buttons
+        # Create a widget to center the buttons - make it expand
         button_widget = QtWidgets.QWidget()
+        button_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         button_widget_layout = QtWidgets.QHBoxLayout(button_widget)
-        button_widget_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Calculate spacing based on button size and window width
-        button_size = 120  # Button diameter
-        window_width = Form.width()
-        total_button_width = button_size * 2  # Two buttons
-        total_spacing = window_width - total_button_width  # Total available space
-        spacing = int(total_spacing / 3)  # Equal spacing on both sides and between buttons
-        
-        button_widget_layout.setSpacing(spacing)
-        button_widget_layout.setContentsMargins(spacing, 0, spacing, 0)
+        button_widget_layout.setContentsMargins(40, 0, 40, 0)  # Add side margins
+        button_widget_layout.setSpacing(40)  # Fixed spacing between buttons
         button_widget_layout.setAlignment(QtCore.Qt.AlignCenter)
 
-        # Circular Add Data button
+        # Circular Add Data button - modern styling
         self.addDataButton = QtWidgets.QPushButton("إضافة بيانات", Form)
         self.addDataButton.setObjectName("addDataButton")
-        self.addDataButton.setFixedSize(120, 120)
+        self.addDataButton.setFixedSize(140, 140)
         self.addDataButton.setStyleSheet("""
             QPushButton {
-                border-radius: 60px;
-                font-size: 18px;
-                background-color: #4CAF50;
+                border-radius: 70px;
+                font-size: 16px;
+                font-weight: bold;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #10B981, stop:1 #059669);
                 color: white;
+                border: 3px solid rgba(255, 255, 255, 0.3);
             }
             QPushButton:hover {
-                background-color: #388E3C;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #34D399, stop:1 #10B981);
+                border: 3px solid rgba(255, 255, 255, 0.6);
+                
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #059669, stop:1 #047857);
             }
         """)
         button_widget_layout.addWidget(self.addDataButton)
         # Connect addDataButton to open add_data dialog with user
         self.addDataButton.clicked.connect(lambda: add_data(self.user))
 
-        # Circular Show Data button
+        # Circular Show Data button - modern styling
         self.showDataButton = QtWidgets.QPushButton("عرض البيانات", Form)
         self.showDataButton.setObjectName("showDataButton")
-        self.showDataButton.setFixedSize(120, 120)
+        self.showDataButton.setFixedSize(140, 140)
         self.showDataButton.setStyleSheet("""
             QPushButton {
-                border-radius: 60px;
-                font-size: 18px;
-                background-color: #2196F3;
+                border-radius: 70px;
+                font-size: 16px;
+                font-weight: bold;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #1E3A8A, stop:1 #1E40AF);
                 color: white;
+                border: 3px solid rgba(255, 255, 255, 0.3);
             }
             QPushButton:hover {
-                background-color: #1565C0;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #2563EB, stop:1 #1E3A8A);
+                border: 3px solid rgba(255, 255, 255, 0.6);
+                
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                    stop:0 #1E40AF, stop:1 #1E3A8A);
             }
         """)
         button_widget_layout.addWidget(self.showDataButton)
@@ -1472,16 +1995,77 @@ class Ui_Form(object):
         # Add Manage Users button if admin
         if user and user.get('role') == 'admin':
             self.manageUsersButton = QtWidgets.QPushButton("إدارة المستخدمين", Form)
-            self.manageUsersButton.setFixedHeight(40)
-            self.manageUsersButton.setStyleSheet("font-size: 16px; background-color: #FFC107; color: black; font-weight: bold;")
+            self.manageUsersButton.setFixedHeight(50)
+            self.manageUsersButton.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #64748B, stop:1 #475569);
+                    color: white;
+                    font-size: 16px;
+                    font-weight: bold;
+                    border-radius: 25px;
+                    padding: 10px 20px;
+                    border: 2px solid rgba(255, 255, 255, 0.3);
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #94A3B8, stop:1 #64748B);
+                    border: 2px solid rgba(255, 255, 255, 0.6);
+                    
+                }
+            """)
             self.manageUsersButton.clicked.connect(self.openUserManager)
             layout.addWidget(self.manageUsersButton)
             
             self.manageSuppliersButton = QtWidgets.QPushButton("إدارة الموردين", Form)
-            self.manageSuppliersButton.setFixedHeight(40)
-            self.manageSuppliersButton.setStyleSheet("font-size: 16px; background-color: #9C27B0; color: white; font-weight: bold;")
+            self.manageSuppliersButton.setFixedHeight(50)
+            self.manageSuppliersButton.setStyleSheet("""
+                QPushButton {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #1E3A8A, stop:1 #1E40AF);
+                    color: white;
+                    font-size: 16px;
+                    font-weight: bold;
+                    border-radius: 25px;
+                    padding: 10px 20px;
+                    border: 2px solid rgba(255, 255, 255, 0.3);
+                }
+                QPushButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #2563EB, stop:1 #1E3A8A);
+                    border: 2px solid rgba(255, 255, 255, 0.6);
+                    
+                }
+            """)
             self.manageSuppliersButton.clicked.connect(self.openSupplierManager)
             layout.addWidget(self.manageSuppliersButton)
+
+        # Add update button for all users
+        self.updateButton = QtWidgets.QPushButton("فحص التحديثات", Form)
+        self.updateButton.setFixedHeight(50)
+        self.updateButton.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #10B981, stop:1 #059669);
+                color: white;
+                font-size: 16px;
+                font-weight: bold;
+                border-radius: 25px;
+                padding: 10px 20px;
+                border: 2px solid rgba(255, 255, 255, 0.3);
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #34D399, stop:1 #10B981);
+                border: 2px solid rgba(255, 255, 255, 0.6);
+                
+            }
+        """)
+        if UPDATER_AVAILABLE:
+            self.updateButton.clicked.connect(self.checkForUpdates)
+        else:
+            self.updateButton.setEnabled(False)
+        layout.addWidget(self.updateButton)
 
         # Set the layout
         Form.setLayout(layout)
@@ -1493,6 +2077,12 @@ class Ui_Form(object):
     def openSupplierManager(self):
         dlg = SupplierManagerDialog(self.Form)
         dlg.exec_()
+    
+    def checkForUpdates(self):
+        if UPDATER_AVAILABLE:
+            show_update_dialog(self.Form)
+        else:
+            QtWidgets.QMessageBox.information(self.Form, "معلومة", "نظام التحديث غير متوفر في هذا الإصدار.")
 
     def showData(self):
         print("Entering showData method")
@@ -1555,6 +2145,7 @@ class Ui_Form(object):
         print('Before creating dialog')
         Dialog = QtWidgets.QDialog(self.Form, QtCore.Qt.Window)
         Dialog.setWindowTitle("عرض البيانات - متتبع الأسعار")
+        Dialog.setLayoutDirection(QtCore.Qt.RightToLeft)  # Set RTL for Arabic
         # Set window flags to ensure proper window management
         Dialog.setWindowState(QtCore.Qt.WindowMaximized)
         # Set minimum size to ensure the dialog is usable when not maximized
@@ -1562,59 +2153,67 @@ class Ui_Form(object):
         # Set size policy to allow resizing
         Dialog.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         
-        # Set base stylesheet for the dialog to ensure proper colors
+        # Set base stylesheet for the dialog to ensure proper colors - professional light theme
         Dialog.setStyleSheet("""
             QDialog, QWidget {
-                background-color: white;
-                color: #333333;
+                background-color: #F8FAFC;
+                color: #1E3A8A;
             }
-            QLabel, QComboBox, QLineEdit, QDateEdit, QPushButton, QTableWidget, QHeaderView::section {
-                color: #333333;
+            QLabel, QComboBox, QLineEdit, QDateEdit, QPushButton {
+                color: #64748B;
             }
             QTableWidget {
-                gridline-color: #e0e0e0;
+                gridline-color: #E2E8F0;
                 background-color: white;
-                border: 1px solid #e0e0e0;
-                border-radius: 4px;
+                border: 2px solid #E2E8F0;
+                border-radius: 8px;
             }
             QHeaderView::section {
-                background-color: #f0f0f0;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #1E3A8A, stop:1 #1E40AF);
                 padding: 8px;
-                border: 1px solid #e0e0e0;
+                border: 1px solid #1E3A8A;
                 font-weight: bold;
-                color: #333333;
+                color: white;
             }
             QTableWidget::item {
                 padding: 8px;
-                color: #333333;
+                color: #1E3A8A;
             }
             QTableWidget::item:selected {
-                background-color: #e3f2fd;
-                color: #1976d2;
+                background-color: #1E3A8A;
+                color: white;
             }
             QComboBox, QLineEdit, QDateEdit {
                 background-color: white;
-                border: 1px solid #cccccc;
-                padding: 5px;
-                border-radius: 4px;
-                color: #333333;
+                border: 2px solid #E2E8F0;
+                padding: 8px 12px;
+                border-radius: 8px;
+                color: #1E3A8A;
+                font-weight: bold;
+            }
+            QComboBox:focus, QLineEdit:focus, QDateEdit:focus {
+                border: 2px solid #1E3A8A;
             }
             QComboBox QAbstractItemView {
                 background-color: white;
-                color: #333333;
-                selection-background-color: #e3f2fd;
-                selection-color: #1976d2;
+                color: #1E3A8A;
+                selection-background-color: #1E3A8A;
+                selection-color: white;
+                border: 1px solid #E2E8F0;
             }
             QPushButton {
-                background-color: #4CAF50;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #1E3A8A, stop:1 #1E40AF);
                 color: white;
                 border: none;
                 padding: 8px 16px;
-                border-radius: 4px;
+                border-radius: 8px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #2563EB, stop:1 #1E3A8A);
             }
         """)
         
@@ -1636,15 +2235,17 @@ class Ui_Form(object):
             QGroupBox {
                 font-size: 14px;
                 font-weight: bold;
-                border: 1px solid #e0e0e0;
-                border-radius: 6px;
+                border: 2px solid #E2E8F0;
+                border-radius: 8px;
                 margin-top: 10px;
                 padding-top: 15px;
+                color: #1E3A8A;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 5px;
+                color: #1E3A8A;
             }
         """)
         
@@ -1664,18 +2265,34 @@ class Ui_Form(object):
             QComboBox {
                 font-size: 14px;
                 min-width: 200px;
-                padding: 5px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
+                padding: 8px 12px;
+                border: 2px solid #E2E8F0;
+                border-radius: 8px;
+                color: #1E3A8A;
+                font-weight: bold;
                 background-color: white;
             }
+            QComboBox:focus {
+                border: 2px solid #1E3A8A;
+            }
             QComboBox::drop-down {
-                border: 0px;
+                border: none;
+                width: 30px;
             }
             QComboBox::down-arrow {
-                image: url(dropdown-arrow.png);
-                width: 12px;
-                height: 12px;
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 8px solid #64748B;
+                width: 0;
+                height: 0;
+            }
+            QComboBox QAbstractItemView {
+                background-color: white;
+                color: #1E3A8A;
+                selection-background-color: #1E3A8A;
+                selection-color: white;
+                border: 1px solid #E2E8F0;
             }
         """)
         self.provider_combo.addItem("جميع الموردين")
@@ -1708,28 +2325,32 @@ class Ui_Form(object):
                 font-size: 14px;
                 min-width: 120px;
                 background-color: white;
-                color: #333333;
-                border: 1px solid #cccccc;
-                border-radius: 4px;
-                padding: 5px;
+                color: #1E3A8A;
+                border: 2px solid #E2E8F0;
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-weight: bold;
+            }
+            QDateEdit:focus {
+                border: 2px solid #1E3A8A;
             }
             QDateEdit::drop-down {
                 subcontrol-origin: padding;
                 subcontrol-position: top right;
                 width: 20px;
-                border-left: 1px solid #cccccc;
+                border-left: 1px solid #E2E8F0;
             }
             QDateEdit::down-arrow {
-                image: url(calendar-icon.png);
-                width: 14px;
-                height: 14px;
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 8px solid #64748B;
+                width: 0;
+                height: 0;
             }
-            QCalendarWidget QWidget {
-                alternate-background-color: #f0f0f0;
-            }
-            QCalendarWidget QToolButton {
-                color: #333333;
-                background-color: #f0f0f0;
+            QCalendarWidget QTableView {
+                background-color: white;
+                color: #1E3A8A;
             }
         """
         
@@ -1739,7 +2360,7 @@ class Ui_Form(object):
         self.start_date_edit.setStyleSheet(date_edit_style)
         
         to_label = QtWidgets.QLabel("إلى")
-        to_label.setStyleSheet("font-size: 14px; padding: 0 5px; color: #333333;")
+        to_label.setStyleSheet("font-size: 14px; padding: 0 5px; color: #64748B;")
         
         self.end_date_edit = QtWidgets.QDateEdit()
         self.end_date_edit.setCalendarPopup(True)
@@ -1747,38 +2368,7 @@ class Ui_Form(object):
         self.end_date_edit.setStyleSheet(date_edit_style)
         
         # Set calendar popup style
-        calendar_style = """
-            QCalendarWidget QAbstractItemView:enabled {
-                color: #333333;
-                background-color: white;
-                selection-background-color: #4CAF50;
-                selection-color: white;
-            }
-            QCalendarWidget QWidget#qt_calendar_navigationbar {
-                background-color: #4CAF50;
-                color: white;
-            }
-            QCalendarWidget QToolButton {
-                background-color: transparent;
-                color: white;
-                border: none;
-                min-width: 30px;
-                min-height: 30px;
-            }
-            QCalendarWidget QToolButton:hover {
-                background-color: rgba(255, 255, 255, 0.2);
-                border-radius: 4px;
-            }
-            QCalendarWidget QMenu {
-                background-color: white;
-                color: #333333;
-            }
-            QCalendarWidget QSpinBox {
-                background-color: white;
-                color: #333333;
-                min-width: 80px;
-            }
-        """
+        calendar_style = "QCalendarWidget QAbstractItemView:enabled { color: #1E3A8A; background-color: white; selection-background-color: #10B981; selection-color: white; } QCalendarWidget QWidget#qt_calendar_navigationbar { background-color: #1E3A8A; color: white; } QCalendarWidget QToolButton { background-color: transparent; color: white; border: none; } QCalendarWidget QToolButton:hover { background-color: rgba(255, 255, 255, 0.2); }"
         # Apply styles to both calendar widgets
         start_calendar = self.start_date_edit.calendarWidget()
         end_calendar = self.end_date_edit.calendarWidget()
@@ -1796,20 +2386,7 @@ class Ui_Form(object):
         
         # Apply filter button
         self.apply_filter_btn = QtWidgets.QPushButton("تطبيق المرشحات")
-        self.apply_filter_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 4px;
-                font-size: 14px;
-                margin-left: 10px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-        """)
+        self.apply_filter_btn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #10B981, stop:1 #059669); color: white; font-weight: bold; font-size: 14px; padding: 10px 20px; border-radius: 8px; border: 2px solid rgba(255, 255, 255, 0.3); min-width: 150px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #34D399, stop:1 #10B981); border: 2px solid rgba(255, 255, 255, 0.6); } QPushButton:pressed { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #059669, stop:1 #047857); }")
         
         # Add widgets to filter row
         filter_row.addWidget(provider_label)
@@ -1838,15 +2415,7 @@ class Ui_Form(object):
         self.total_purchases_label = QtWidgets.QLabel("إجمالي المشتريات: 0.00")
         
         for label in [self.total_owed_label, self.total_returned_label, self.total_purchases_label]:
-            label.setStyleSheet("""
-                font-size: 14px; 
-                font-weight: bold; 
-                padding: 8px; 
-                background-color: #f8f8f8; 
-                border: 1px solid #e0e0e0;
-                border-radius: 4px;
-                margin: 2px;
-            """)
+            label.setStyleSheet("font-size: 14px; font-weight: bold; padding: 8px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; margin: 2px; color: #1E3A8A;")
             summary_layout.addWidget(label)
         
         # Add summary layout to filter layout
@@ -1984,17 +2553,7 @@ class Ui_Form(object):
                 
                 # Add View button for returned types
                 view_btn = QtWidgets.QPushButton("عرض")
-                view_btn.setStyleSheet(
-                    "QPushButton {"
-                    "background-color: #FF9800;"  # Orange color
-                    "color: white;"
-                    "border: none;"
-                    "padding: 5px 10px;"
-                    "border-radius: 3px;"
-                    "min-width: 60px;"
-                    "}"
-                    "QPushButton:hover { background-color: #F57C00; }"  # Darker orange on hover
-                )
+                view_btn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E3A8A, stop:1 #1E40AF); color: white; font-weight: bold; font-size: 12px; padding: 5px 12px; border-radius: 6px; border: 2px solid rgba(255, 255, 255, 0.3); min-width: 60px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2563EB, stop:1 #1E3A8A); } QPushButton:pressed { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E40AF, stop:1 #1E3A8A); }")
                 view_btn.setCursor(QtCore.Qt.PointingHandCursor)
                 
                 # Connect the button to show returned types for this row
@@ -2170,7 +2729,7 @@ class Ui_Form(object):
             
             # Update net owed label if it exists
             if hasattr(self, 'net_owed_label'):
-                self.net_owed_label.setText(f"باقي المديونية للشركة {total_net_owed:,.2f}")
+                self.net_owed_label.setText(f"{total_net_owed:,.2f}")
             
             # Debug output
             print(f"Summary - Purchases: {total_purchases:,.2f}, Returned: {total_returned:,.2f}, Paid: {total_paid:,.2f}, Owed: {total_net_owed:,.2f}")
@@ -2334,15 +2893,8 @@ class Ui_Form(object):
             
             # Delete button
             delete_button = QtWidgets.QPushButton("حذف الصف المحدد")
-            delete_button.setStyleSheet(
-                "background-color: #e53935;"
-                "color: white;"
-                "font-size: 16px;"
-                "padding: 8px 16px;"
-                "border-radius: 4px;"
-                "min-width: 180px;"
-            )
-            delete_button.setMinimumHeight(30)
+            delete_button.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #DC2626, stop:1 #B91C1C); color: white; font-weight: bold; font-size: 15px; padding: 10px 20px; border-radius: 8px; border: 2px solid rgba(255, 255, 255, 0.3); min-width: 180px; min-height: 35px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #EF4444, stop:1 #DC2626); } QPushButton:pressed { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #B91C1C, stop:1 #991B1B); }")
+            delete_button.setMinimumHeight(35)
             
             def delete_selected():
                 selected = table.currentRow()
@@ -2417,15 +2969,8 @@ class Ui_Form(object):
 
             # Edit button
             edit_button = QtWidgets.QPushButton("تحرير الصف المحدد")
-            edit_button.setStyleSheet(
-                "background-color: #43A047;"
-                "color: white;"
-                "font-size: 16px;"
-                "padding: 8px 16px;"
-                "border-radius: 4px;"
-                "min-width: 180px;"
-            )
-            edit_button.setMinimumHeight(30)
+            edit_button.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E3A8A, stop:1 #1E40AF); color: white; font-weight: bold; font-size: 15px; padding: 10px 20px; border-radius: 8px; border: 2px solid rgba(255, 255, 255, 0.3); min-width: 180px; min-height: 35px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2563EB, stop:1 #1E3A8A); } QPushButton:pressed { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E40AF, stop:1 #1E3A8A); }")
+            edit_button.setMinimumHeight(35)
             
             # Add edit button to layout
             button_layout.addWidget(edit_button)
@@ -2500,18 +3045,7 @@ class Ui_Form(object):
                 # Add close button
                 close_btn = QtWidgets.QPushButton("إغلاق")
                 close_btn.clicked.connect(dialog.accept)
-                close_btn.setStyleSheet(
-                    "QPushButton {"
-                    "background-color: #f44336;"
-                    "color: white;"
-                    "font-size: 14px;"
-                    "padding: 6px 12px;"
-                    "border-radius: 4px;"
-                    "min-width: 100px;"
-                    "margin-top: 10px;"
-                    "}"
-                    "QPushButton:hover { background-color: #e53935; }"
-                )
+                close_btn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #64748B, stop:1 #475569); color: white; font-weight: bold; font-size: 14px; padding: 10px 20px; border-radius: 8px; border: 2px solid rgba(255, 255, 255, 0.3); min-width: 100px; min-height: 30px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #94A3B8, stop:1 #64748B); } QPushButton:pressed { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #475569, stop:1 #334155); }")
                 
                 # Center the close button
                 btn_layout = QtWidgets.QHBoxLayout()
@@ -2569,38 +3103,10 @@ class Ui_Form(object):
                 # Create edit dialog similar to add data dialog
                 edit_dialog = QtWidgets.QDialog(Dialog)
                 edit_dialog.setWindowTitle("تحرير البيانات - متتبع الأسعار")
+                edit_dialog.setLayoutDirection(QtCore.Qt.RightToLeft)  # Set RTL for Arabic
                 edit_dialog.resize(700, 500)
-                edit_dialog.setStyleSheet("""
-                    QWidget {
-                        background-color: white;
-                    }
-                    QLabel {
-                        color: black;
-                        font-weight: bold;
-                        font-size: 14px;
-                    }
-                    QLineEdit, QComboBox, QTableWidget {
-                        background-color: white;
-                        color: black;
-                        font-weight: bold;
-                        font-size: 14px;
-                        padding: 8px;
-                        border: 1px solid #ccc;
-                        border-radius: 4px;
-                    }
-                    QPushButton {
-                        background-color: white;
-                        color: black;
-                        font-weight: bold;
-                        font-size: 14px;
-                        padding: 8px 16px;
-                        border: 1px solid #ccc;
-                        border-radius: 4px;
-                    }
-                    QPushButton:hover {
-                        background-color: #f0f0f0;
-                    }
-                """)
+                
+                edit_dialog.setStyleSheet("background-color: #F8FAFC; QLabel { color: #64748B; font-weight: bold; font-size: 14px; } QLineEdit, QComboBox, QTableWidget { background-color: white; color: #1E3A8A; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #E2E8F0; border-radius: 8px; } QLineEdit:focus, QComboBox:focus { border: 2px solid #1E3A8A; background-color: white; } QLineEdit:disabled { background-color: #F1F5F9; color: #94A3B8; } QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E3A8A, stop:1 #1E40AF); color: white; font-weight: bold; font-size: 14px; padding: 12px 24px; border-radius: 8px; border: 2px solid #1E3A8A; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2563EB, stop:1 #1E3A8A); border: 2px solid #2563EB; } QRadioButton { color: #64748B; font-size: 14px; spacing: 8px; padding: 8px 12px; font-weight: bold; } QRadioButton::indicator { width: 18px; height: 18px; } QRadioButton:hover { background-color: #F1F5F9; border-radius: 4px; }")
                 
                 # Main vertical layout
                 main_layout = QtWidgets.QVBoxLayout(edit_dialog)
@@ -2621,6 +3127,8 @@ class Ui_Form(object):
                     if index >= 0:
                         provider_combo.setCurrentIndex(index)
                 
+                provider_combo.setStyleSheet("QComboBox { background-color: white; color: #1E3A8A; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #E2E8F0; border-radius: 8px; } QComboBox:focus { border: 2px solid #1E3A8A; } QComboBox::drop-down { border: none; width: 30px; } QComboBox::down-arrow { image: none; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 8px solid #64748B; width: 0; height: 0; } QComboBox QAbstractItemView { background-color: white; color: #1E3A8A; selection-background-color: #1E3A8A; selection-color: white; border: 1px solid #E2E8F0; border-radius: 5px; }")
+                
                 row_layout.addWidget(QtWidgets.QLabel("المورد:"))
                 row_layout.addWidget(provider_combo, 2)
                 
@@ -2629,7 +3137,7 @@ class Ui_Form(object):
                 amount_edit.setText(str(row_data.get('amount', '0.0')))
                 amount_edit.setValidator(QtGui.QDoubleValidator())
                 amount_edit.setMinimumHeight(40)
-                amount_edit.setStyleSheet("font-size: 16px;")
+                amount_edit.setStyleSheet("QLineEdit { background-color: white; color: #1E3A8A; font-weight: bold; font-size: 16px; padding: 12px 16px; border: 2px solid #E2E8F0; border-radius: 8px; } QLineEdit:focus { border: 2px solid #1E3A8A; }")
                 row_layout.addWidget(amount_edit, 2)
                 
                 main_layout.addLayout(row_layout)
@@ -2642,14 +3150,14 @@ class Ui_Form(object):
                 amount_returned_label = QtWidgets.QLabel(edit_dialog)
                 amount_returned_label.setText(f"إجمالي قيمة المرتجع: {row_data.get('amount_returned', '0.0')}")
                 amount_returned_label.setMinimumHeight(40)
-                amount_returned_label.setStyleSheet("font-size: 16px; background: #f0f0f0; border: 1px solid #ccc; padding: 8px;")
+                amount_returned_label.setStyleSheet("font-size: 16px; background: #F1F5F9; border: 2px solid #64748B; padding: 8px; color: #1E3A8A; border-radius: 8px;")
                 row_layout2.addWidget(amount_returned_label, 2)
                 
                 # Order Code Input
                 order_code_edit = QtWidgets.QLineEdit(edit_dialog)
                 order_code_edit.setText(row_data.get('order_code', ''))
                 order_code_edit.setMinimumHeight(40)
-                order_code_edit.setStyleSheet("font-size: 16px;")
+                order_code_edit.setStyleSheet("QLineEdit { background-color: white; color: #1E3A8A; font-weight: bold; font-size: 16px; padding: 12px 16px; border: 2px solid #E2E8F0; border-radius: 8px; } QLineEdit:focus { border: 2px solid #1E3A8A; }")
                 order_code_edit.setValidator(QtGui.QRegExpValidator(QtCore.QRegExp(r'^\d{1,10}$')))
                 row_layout2.addWidget(order_code_edit, 2)
                 
@@ -2657,21 +3165,7 @@ class Ui_Form(object):
                 
                 # Payment Options
                 payment_group = QtWidgets.QGroupBox("خيارات الدفع")
-                payment_group.setStyleSheet("""
-                    QGroupBox {
-                        font-size: 14px;
-                        font-weight: bold;
-                        border: 1px solid #ccc;
-                        border-radius: 4px;
-                        margin-top: 10px;
-                        padding-top: 15px;
-                    }
-                    QGroupBox::title {
-                        subcontrol-origin: margin;
-                        left: 10px;
-                        padding: 0 3px 0 3px;
-                    }
-                """)
+                payment_group.setStyleSheet("QGroupBox { font-size: 15px; font-weight: bold; border: 2px solid #E2E8F0; border-radius: 12px; margin-top: 20px; padding-top: 20px; background-color: white; color: #1E3A8A; } QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 8px 0 8px; color: #1E3A8A; }")
                 
                 payment_layout = QtWidgets.QVBoxLayout(payment_group)
                 payment_layout.setSpacing(10)
@@ -2684,18 +3178,7 @@ class Ui_Form(object):
                 partial_radio = QtWidgets.QRadioButton("دفع جزئي")
                 debt_radio = QtWidgets.QRadioButton("دَيْن (دفع لاحقاً)")
                 
-                radio_style = """
-                    QRadioButton {
-                        font-size: 14px;
-                        color: #333333;
-                        spacing: 5px;
-                        padding: 5px 8px;
-                    }
-                    QRadioButton::indicator {
-                        width: 16px;
-                        height: 16px;
-                    }
-                """
+                radio_style = "QRadioButton { font-size: 14px; color: #64748B; spacing: 5px; padding: 5px 8px; font-weight: bold; } QRadioButton::indicator { width: 16px; height: 16px; } QRadioButton:hover { background-color: #F1F5F9; border-radius: 4px; }"
                 
                 for radio in [cash_radio, partial_radio, debt_radio]:
                     radio.setStyleSheet(radio_style)
@@ -2714,42 +3197,15 @@ class Ui_Form(object):
                 payment_amount_input = QtWidgets.QLineEdit()
                 payment_amount_input.setEnabled(False)
                 payment_amount_input.setValidator(QtGui.QDoubleValidator(0, 999999.99, 2))
-                payment_amount_input.setStyleSheet("""
-                    QLineEdit {
-                        font-size: 14px;
-                        padding: 5px;
-                        border: 1px solid #ccc;
-                        border-radius: 4px;
-                        min-width: 100px;
-                    }
-                    QLineEdit:disabled {
-                        background-color: #f5f5f5;
-                        color: #888;
-                    }
-                """)
+                payment_amount_input.setStyleSheet("QLineEdit { background-color: white; color: #1E3A8A; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #E2E8F0; border-radius: 8px; min-width: 100px; } QLineEdit:focus { border: 2px solid #1E3A8A; } QLineEdit:disabled { background-color: #F1F5F9; color: #94A3B8; }")
                 
                 net_owed_label = QtWidgets.QLabel("مديونية للشركة: 0.00")
-                net_owed_label.setStyleSheet("""
-                    font-size: 14px;
-                    font-weight: bold;
-                    padding: 5px 10px;
-                    background-color: #f8f8f8;
-                    border: 1px solid #e0e0e0;
-                    border-radius: 4px;
-                    min-width: 150px;
-                    text-align: center;
-                """)
+                net_owed_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 15px 25px; background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F1F5F9, stop:1 #E2E8F0); border: 2px solid #64748B; border-radius: 8px; min-width: 300px; min-height: 50px; text-align: center; color: #1E3A8A;")
                 
-                payment_amount_layout.addWidget(payment_amount_label)
-                payment_amount_layout.addWidget(payment_amount_input, 1)
-                payment_amount_layout.addStretch(2)
-                
-                net_owed_container = QtWidgets.QFrame()
-                net_owed_container.setStyleSheet("background: transparent;")
-                net_owed_layout = QtWidgets.QHBoxLayout(net_owed_container)
-                net_owed_layout.setContentsMargins(0, 0, 0, 0)
-                net_owed_layout.addWidget(net_owed_label)
-                payment_amount_layout.addWidget(net_owed_container, 1)
+                payment_amount_layout.addWidget(payment_amount_label)  # Label first in RTL
+                payment_amount_layout.addWidget(payment_amount_input, 1)  # Input second in RTL
+                payment_amount_layout.addStretch(1)
+                payment_amount_layout.addWidget(net_owed_label)  # Add net owed directly
                 
                 payment_layout.addLayout(radio_button_layout)
                 payment_layout.addSpacing(10)
@@ -2802,6 +3258,11 @@ class Ui_Form(object):
                 medicineTable.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
                 medicineTable.setMinimumHeight(120)
                 
+                # Apply modern table styling to match add data dialog
+                medicineTable.setStyleSheet("QTableWidget { font-size: 13px; gridline-color: #E2E8F0; background-color: white; border: 2px solid #E2E8F0; border-radius: 8px; } QTableWidget::item { height: 35px; padding: 8px; border: none; border-radius: 0px; background-color: white; color: #1E3A8A; } QTableWidget::item:selected { background-color: #1E3A8A; color: white; font-weight: bold; } QTableWidget::item:focus { background-color: #3B82F6; color: white; } QHeaderView::section { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1E3A8A, stop:1 #1E40AF); color: white; font-weight: bold; font-size: 13px; padding: 10px; border: 1px solid #1E3A8A; border-radius: 0px; }")
+                medicineTable.verticalHeader().setDefaultSectionSize(40)
+                medicineTable.verticalHeader().setMinimumSectionSize(40)
+                
                 # Populate medicine table
                 medicineTable.setRowCount(len(medicine_types))
                 for row, med in enumerate(medicine_types):
@@ -2823,7 +3284,7 @@ class Ui_Form(object):
                 # Add/Remove row buttons
                 btn_layout = QtWidgets.QHBoxLayout()
                 addRowBtn = QtWidgets.QPushButton("إضافة", edit_dialog)
-                addRowBtn.setStyleSheet("background-color: #90ee90; font-size: 14px;")
+                addRowBtn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E3A8A, stop:1 #1E40AF); color: white; font-weight: bold; font-size: 14px; padding: 10px 20px; border-radius: 8px; border: 2px solid #1E3A8A; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2563EB, stop:1 #1E3A8A); border: 2px solid #2563EB; }")
                 
                 def addMedicineRow():
                     row = medicineTable.rowCount()
@@ -2837,7 +3298,7 @@ class Ui_Form(object):
                 btn_layout.addWidget(addRowBtn)
                 
                 removeRowBtn = QtWidgets.QPushButton("حذف المحدد", edit_dialog)
-                removeRowBtn.setStyleSheet("background-color: #ff7f7f; font-size: 14px;")
+                removeRowBtn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #64748B, stop:1 #475569); color: white; font-weight: bold; font-size: 14px; padding: 10px 20px; border-radius: 8px; border: 2px solid #64748B; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #94A3B8, stop:1 #64748B); border: 2px solid #94A3B8; }")
                 
                 def removeMedicineRow():
                     selected = medicineTable.currentRow()
@@ -2851,8 +3312,8 @@ class Ui_Form(object):
                 # Submit button
                 submit_button = QtWidgets.QPushButton(edit_dialog)
                 submit_button.setObjectName("submit_button")
-                submit_button.setStyleSheet("background-color: orange; font-size: 16px;")
-                submit_button.setMinimumHeight(40)
+                submit_button.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #10B981, stop:1 #059669); color: white; font-weight: bold; font-size: 18px; padding: 15px 30px; border-radius: 12px; border: 2px solid #10B981; min-width: 200px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #34D399, stop:1 #10B981); border: 2px solid #34D399; } QPushButton:pressed { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #059669, stop:1 #047857); }")
+                submit_button.setMinimumHeight(50)
                 main_layout.addWidget(submit_button, alignment=QtCore.Qt.AlignCenter)
                 
                 # Store references for submit function
@@ -2887,10 +3348,10 @@ class Ui_Form(object):
                         # Check if returned amount exceeds order amount
                         if total_returned > total_amount and total_amount > 0:
                             amount_returned_label.setText(f"إجمالي قيمة المرتجع: {total_returned:.2f} (يتجاوز قيمة الطلب!)")
-                            amount_returned_label.setStyleSheet("font-size: 16px; background: #ffebee; border: 2px solid #f44336; padding: 8px; color: #c62828;")
+                            amount_returned_label.setStyleSheet("font-size: 16px; background: #FEF2F2; border: 2px solid #DC2626; padding: 8px; color: #DC2626; border-radius: 8px;")
                         else:
                             amount_returned_label.setText(f"إجمالي قيمة المرتجع: {total_returned:.2f}")
-                            amount_returned_label.setStyleSheet("font-size: 16px; background: #f0f0f0; border: 1px solid #ccc; padding: 8px;")
+                            amount_returned_label.setStyleSheet("font-size: 16px; background: #F1F5F9; border: 2px solid #64748B; padding: 8px; color: #1E3A8A; border-radius: 8px;")
                         
                         net_amount_before_payment = total_amount - total_returned
                         payment_type = ""
@@ -2914,9 +3375,9 @@ class Ui_Form(object):
                             net_owed = net_amount_before_payment
                         
                         if net_owed > 0:
-                            net_owed_label.setStyleSheet("color: #d32f2f; font-weight: bold;")
+                            net_owed_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 15px 25px; background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #FEF2F2, stop:1 #FEE2E2); border: 2px solid #FCA5A5; border-radius: 8px; min-width: 300px; min-height: 50px; text-align: center; color: #DC2626;")
                         else:
-                            net_owed_label.setStyleSheet("color: #388e3c; font-weight: bold;")
+                            net_owed_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 15px 25px; background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F1F5F9, stop:1 #E2E8F0); border: 2px solid #64748B; border-radius: 8px; min-width: 300px; min-height: 50px; text-align: center; color: #1E3A8A;")
                         
                         net_owed_label.setText(f"مديونية للشركة: {net_owed:.2f}")
                         
@@ -3038,15 +3499,8 @@ class Ui_Form(object):
 
         # Add close button to main layout
         close_button = QtWidgets.QPushButton("إغلاق")
-        close_button.setStyleSheet("""
-            background-color: orange;
-            color: white;
-            font-size: 16px;
-            padding: 8px 16px;
-            border-radius: 4px;
-            min-width: 120px;
-        """)
-        close_button.setMinimumHeight(30)
+        close_button.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #757575, stop:1 #424242); color: white; font-weight: bold; font-size: 16px; padding: 12px 24px; border-radius: 8px; border: 2px solid rgba(255, 255, 255, 0.3); min-width: 120px; min-height: 35px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #9E9E9E, stop:1 #757575); border: 2px solid rgba(255, 255, 255, 0.6); } QPushButton:pressed { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #424242, stop:1 #212121); }")
+        close_button.setMinimumHeight(35)
         close_button.clicked.connect(Dialog.accept)
         
         # Add close button to main layout with center alignment
@@ -3070,6 +3524,28 @@ if __name__ == "__main__":
         login = LoginDialog()
         if login.exec_() == QtWidgets.QDialog.Accepted and login.result:
             user = login.result
+            
+            # Check for updates on startup
+            if UPDATER_AVAILABLE:
+                try:
+                    update_result = check_for_updates_on_startup()
+                    if update_result and update_result.get('update_available'):
+                        # Show update dialog if critical update or update available
+                        if update_result.get('critical'):
+                            show_update_dialog()
+                        else:
+                            # Show notification for non-critical updates
+                            reply = QtWidgets.QMessageBox.question(
+                                None,
+                                "تحديث متوفر",
+                                f"تحديث جديد متوفر: {update_result['latest_version']}\n\nهل تريد تثبيت التحديث الآن؟",
+                                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+                            )
+                            if reply == QtWidgets.QMessageBox.Yes:
+                                show_update_dialog()
+                except Exception as e:
+                    print(f"Error checking for updates: {e}")
+            
             Form = QtWidgets.QWidget()
             ui = Ui_Form(user)
             ui.setupUi(Form)
