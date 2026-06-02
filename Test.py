@@ -14,6 +14,31 @@ import datetime
 from PyQt5 import QtCore, QtGui, QtWidgets
 import os
 import sys
+import json
+import requests
+import threading
+import hashlib
+from cryptography.fernet import Fernet
+
+def get_app_directories():
+    """Get proper Windows application directories for modern app storage"""
+    if os.name == 'nt':  # Windows
+        program_data = os.environ.get('LOCALAPPDATA', os.path.expanduser('~/AppData/Local'))
+        app_name = "NotedExpense"
+        app_data_dir = os.path.join(program_data, app_name)
+        
+        # Create directory if it doesn't exist
+        if not os.path.exists(app_data_dir):
+            os.makedirs(app_data_dir)
+            
+        return app_data_dir
+    else:
+        # Fallback for non-Windows systems - use current directory
+        return os.path.dirname(os.path.abspath(__file__))
+
+# Initialize app data directory
+APP_DATA_DIR = get_app_directories()
+
 try:
     from app_updater import UpdateChecker, check_for_updates_on_startup, show_update_dialog
     UPDATER_AVAILABLE = True
@@ -21,7 +46,411 @@ except ImportError:
     UPDATER_AVAILABLE = False
     print("Updater module not available")
 
+class LicenseManager:
+    """Handles license verification, storage, and validation"""
+    
+    def __init__(self):
+        # Use App Data directory for modern Windows app storage
+        self.license_file = os.path.join(APP_DATA_DIR, "license.encrypted")
+        self.license_key_file = os.path.join(APP_DATA_DIR, "license.key")
+        self.max_failed_attempts = 3
+        self.failed_attempts = 0
+        self.is_locked = False
+        self.expiry_date = None
+        
+    def generate_key(self):
+        """Generate a new encryption key for license storage"""
+        return Fernet.generate_key()
+    
+    def store_license(self, token):
+        """Store the license token securely"""
+        try:
+            # Generate encryption key if it doesn't exist
+            if not os.path.exists(self.license_key_file):
+                key = self.generate_key()
+                with open(self.license_key_file, 'wb') as f:
+                    f.write(key)
+            else:
+                with open(self.license_key_file, 'rb') as f:
+                    key = f.read()
+            
+            # Encrypt and store the license token with expiry date (30 days from now)
+            f = Fernet(key)
+            expiry = (datetime.datetime.now() + datetime.timedelta(days=30)).isoformat()
+            license_data = {
+                'token': token,
+                'expiry': expiry,
+                'created': datetime.datetime.now().isoformat()
+            }
+            encrypted_data = f.encrypt(json.dumps(license_data).encode())
+            
+            with open(self.license_file, 'wb') as f:
+                f.write(encrypted_data)
+            
+            return True
+        except Exception as e:
+            print(f"Error storing license: {e}")
+            return False
+    
+    def load_license(self):
+        """Load and validate the license"""
+        try:
+            if not os.path.exists(self.license_file) or not os.path.exists(self.license_key_file):
+                return False, None, None
+            
+            # Load encryption key
+            with open(self.license_key_file, 'rb') as key_file:
+                key = key_file.read()
+            
+            # Decrypt license data
+            cipher = Fernet(key)
+            with open(self.license_file, 'rb') as license_file:
+                encrypted_data = license_file.read()
+            
+            license_data = json.loads(cipher.decrypt(encrypted_data).decode())
+            token = license_data['token']
+            expiry = license_data['expiry']
+            
+            # Check if license is valid (hasn't expired)
+            expiry_date = datetime.datetime.fromisoformat(expiry)
+            if datetime.datetime.now() > expiry_date:
+                return False, token, "expired"
+            
+            return True, token, "valid"
+        except Exception as e:
+            print(f"Error loading license: {e}")
+            return False, None, "error"
+    
+    def verify_license(self, token):
+        """Verify the license by making a test API call to the specific repo"""
+        try:
+            headers = {'Authorization': f'token {token}'}
+            # First check if the token is valid for GitHub user
+            response = requests.get('https://api.github.com/user', headers=headers, timeout=5)
+            if response.status_code != 200:
+                return False
+            
+            # Then check if the token has access to the specific repository
+            repo_response = requests.get('https://api.github.com/repos/youssefasalcodes/Noted-Expense', 
+                                      headers=headers, timeout=5)
+            
+            # Only accept the license if it has access to the specific repo
+            return repo_response.status_code == 200
+        except requests.exceptions.RequestException:
+            # Network error - don't crash, return False but don't fail hard
+            return False
+        except Exception as e:
+            print(f"Error verifying license: {e}")
+            return False
+    
+    def check_license_status(self):
+        """Check the current license status"""
+        is_valid, token, status = self.load_license()
+        
+        if not is_valid:
+            return False, None, "No license found"
+        
+        if status == "expired":
+            self.is_locked = True
+            return False, token, "License expired"
+        
+        # Verify the license if network is available
+        if self.verify_license(token):
+            self.failed_attempts = 0
+            return True, token, "License valid"
+        else:
+            self.failed_attempts += 1
+            if self.failed_attempts >= self.max_failed_attempts:
+                self.is_locked = True
+                return False, token, "License verification failed (network issues)"
+            return True, token, "License valid (network unavailable)"
+
+class LicenseDialog(QtWidgets.QDialog):
+    """Dialog for collecting license input"""
+    
+    def __init__(self, parent=None, main_widget=None):
+        super().__init__(parent)
+        # Make dialog modal so it blocks the main screen until completed
+        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint & ~QtCore.Qt.WindowCloseButtonHint)
+        self.setWindowModality(QtCore.Qt.ApplicationModal)
+        self.setWindowTitle('License Required')
+        self.setMinimumSize(400, 250)
+        self.main_widget = main_widget or parent  # Store reference to main widget
+        self.ui = None  # Will store reference to ui if needed
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #F8F9FA;
+            }
+            QLabel {
+                color: #1B263B;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QLineEdit {
+                background-color: #FFFFFF;
+                color: #1B263B;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 12px 16px;
+                border: 2px solid #00D084;
+                border-radius: 8px;
+            }
+            QPushButton {
+                background-color: #00D084;
+                color: #FFFFFF;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 10px 20px;
+                border-radius: 8px;
+            }
+            QPushButton:hover {
+                background-color: #415A77;
+            }
+        """)
+        
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setSpacing(20)
+        layout.setContentsMargins(30, 30, 30, 30)
+        
+        # Title and description
+        title = QtWidgets.QLabel('License Required')
+        title.setStyleSheet("font-size: 18px; color: #1B263B; font-weight: bold;")
+        title.setAlignment(QtCore.Qt.AlignCenter)
+        
+        description = QtWidgets.QLabel('Enter your License Key to activate Noted Expense:')
+        description.setWordWrap(True)
+        
+        license_input = QtWidgets.QLineEdit()
+        license_input.setPlaceholderText("Enter your license key...")
+        license_input.setEchoMode(QtWidgets.QLineEdit.Password)
+        
+        # Verify button
+        verify_btn = QtWidgets.QPushButton('Verify & Activate')
+        verify_btn.clicked.connect(lambda: self.verify_license(license_input.text()))
+        
+        layout.addWidget(title)
+        layout.addWidget(description)
+        layout.addWidget(license_input)
+        layout.addWidget(verify_btn)
+        self.setLayout(layout)
+    
+    def verify_license(self, token):
+        """Verify the license and store it if valid"""
+        if not token:
+            QtWidgets.QMessageBox.warning(self, 'Invalid License', 'Please enter a valid License Key.')
+            return
+        
+        if len(token) < 20:
+            QtWidgets.QMessageBox.warning(self, 'Invalid License', 'The license key appears to be invalid.')
+            return
+        
+        license_mgr = LicenseManager()
+        if license_mgr.verify_license(token):
+            if license_mgr.store_license(token):
+                QtWidgets.QMessageBox.information(self, 'License Activated', 
+                    'License verified and activated successfully!\n\nYour license will expire in 30 days.')
+                self.accept()
+                # Directly enable UI and remove overlay if main widget exists
+                if self.main_widget:
+                    self.enable_ui_after_license_activation(self.main_widget)
+            else:
+                QtWidgets.QMessageBox.critical(self, 'Storage Error', 
+                    'License verification succeeded but failed to store the license.')
+        else:
+            QtWidgets.QMessageBox.critical(self, 'Verification Failed', 
+                'The License could not be verified. Please check:\n'
+                '1. The License is valid\n'
+                '2. Your internet connection is working\n'
+                '3. The License has the correct permissions (Contents and Metadata)')
+    
+    def enable_ui_after_license_activation(self, main_widget):
+        """Directly enable UI and remove overlay after successful license activation"""
+        # Re-enable all buttons and inputs in the main UI
+        for widget in main_widget.findChildren(QtWidgets.QPushButton):
+            widget.setEnabled(True)
+        for widget in main_widget.findChildren(QtWidgets.QLineEdit):
+            widget.setEnabled(True)
+        for widget in main_widget.findChildren(QtWidgets.QTableWidget):
+            widget.setEnabled(True)
+        for widget in main_widget.findChildren(QtWidgets.QComboBox):
+            widget.setEnabled(True)
+        
+        # Remove any overlay labels
+        for widget in main_widget.findChildren(QtWidgets.QLabel):
+            if widget.text() in ["No valid license found. Please contact support to obtain a license.", 
+                               "Your license has expired. Please contact support to renew."]:
+                widget.close()
+
+class AppLicenseChecker:
+    """Handles license checking during app runtime"""
+    
+    def __init__(self):
+        self.license_mgr = LicenseManager()
+        self.locked_dialog = None
+    
+    def check_license_on_startup(self, parent_widget):
+        """Check license when app starts and take appropriate action"""
+        is_valid, token, status = self.license_mgr.check_license_status()
+        
+        # Case 1: No license found
+        if status == "No license found":
+            self.show_license_dialog(parent_widget)
+        
+        # Case 2: License expired
+        elif status == "License expired":
+            self.show_license_expired_dialog(parent_widget)
+        
+        # Case 3: Verification failed (network issues) but license exists
+        elif "failed" in status:
+            # Allow usage but show warning
+            QtWidgets.QMessageBox.warning(parent_widget, 'License Verification Warning',
+                f'License verification failed: {status}\n'
+                'The app will continue but automatic updates may be unavailable.')
+        
+        # Case 4: Invalid/Unknown status
+        elif not is_valid:
+            self.show_license_dialog(parent_widget)
+        
+        # Case 5: License is valid and not locked
+        return not self.license_mgr.is_locked
+    
+    def show_license_dialog(self, parent_widget):
+        """Show license input dialog"""
+        dialog = LicenseDialog(parent_widget, main_widget=parent_widget)
+        dialog.exec_()
+    
+    def show_license_expired_dialog(self, parent_widget):
+        """Show dialog when license expires"""
+        dialog = QtWidgets.QDialog(parent_widget)
+        # Make dialog non-closeable - users must renew license
+        dialog.setWindowFlags(dialog.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint & ~QtCore.Qt.WindowCloseButtonHint)
+        dialog.setWindowTitle('License Expired')
+        dialog.setMinimumSize(400, 200)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #F8F9FA;
+            }
+            QLabel {
+                color: #1B263B;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton {
+                background-color: #00D084;
+                color: #FFFFFF;
+                font-weight: bold;
+                font-size: 14px;
+                padding: 10px 20px;
+                border-radius: 8px;
+            }
+        """)
+        
+        layout = QtWidgets.QVBoxLayout(dialog)
+        layout.setSpacing(15)
+        layout.setContentsMargins(30, 30, 30, 30)
+        
+        message = QtWidgets.QLabel('Your Noted Expense license has expired.')
+        message.setStyleSheet("font-size: 16px; color: #E74C3C; font-weight: bold;")
+        
+        message2 = QtWidgets.QLabel('Please enter your new License Key to continue using the app.')
+        message2.setWordWrap(True)
+        
+        renew_btn = QtWidgets.QPushButton('Renew License')
+        renew_btn.clicked.connect(lambda: self.show_license_dialog(parent_widget))
+        
+        exit_btn = QtWidgets.QPushButton('Exit')
+        exit_btn.clicked.connect(dialog.reject)
+        
+        layout.addWidget(message)
+        layout.addWidget(message2)
+        layout.addWidget(renew_btn)
+        layout.addWidget(exit_btn)
+        
+        dialog.exec_()
+        return dialog.result() == QtWidgets.QDialog.Accepted
+    
+    def check_license_during_use(self, parent_widget):
+        """Periodically check license during app usage"""
+        is_valid, token, status = self.license_mgr.check_license_status()
+        
+        if self.license_mgr.is_locked:
+            self.show_license_expired_dialog(parent_widget)
+            return False
+        
+        if not is_valid or "expired" in status:
+            self.license_mgr.is_locked = True
+            self.show_license_expired_dialog(parent_widget)
+            return False
+        
+        return True
+
+# Global license checker
+license_checker = AppLicenseChecker()
+
 # Compile resources if running directly
+def check_and_enforce_license(main_widget, ui):
+    """Check license and enforce it within the main UI instead of separate dialog"""
+    # Add a delay to ensure license files are fully written if they were just created
+    QtCore.QTimer.singleShot(2000, lambda: _perform_license_check(main_widget, ui))
+
+def _perform_license_check(main_widget, ui):
+    """Perform the actual license check after delay"""
+    is_valid, token, status = license_checker.license_mgr.check_license_status()
+    
+    if not is_valid or license_checker.license_mgr.is_locked:
+        # Disable main UI functionality instead of showing separate dialog
+        disable_ui_functionality(main_widget, ui, status)
+    elif "failed" in status:
+        # Show warning but allow usage
+        QtWidgets.QMessageBox.warning(main_widget, 'License Verification Warning',
+            f'License verification failed: {status}\n'
+            'The app will continue but automatic updates may be unavailable.')
+
+def disable_ui_functionality(main_widget, ui, status):
+    """Disable main UI functionality when license is invalid/missing"""
+    # Disable all buttons and inputs in the main UI
+    for widget in main_widget.findChildren(QtWidgets.QPushButton):
+        widget.setEnabled(False)
+    for widget in main_widget.findChildren(QtWidgets.QLineEdit):
+        widget.setEnabled(False)
+    for widget in main_widget.findChildren(QtWidgets.QTableWidget):
+        widget.setEnabled(False)
+    for widget in main_widget.findChildren(QtWidgets.QComboBox):
+        widget.setEnabled(False)
+    
+    # Show license requirement overlay or message
+    license_msg = "No valid license found. Please contact support to obtain a license."
+    if status == "License expired":
+        license_msg = "Your license has expired. Please contact support to renew."
+    
+    # Create overlay label over the main widget with proper scaling
+    overlay = QtWidgets.QLabel(main_widget)
+    overlay.setStyleSheet("""
+        QLabel {
+            background-color: rgba(248, 249, 250, 0.95);
+            color: #E74C3C;
+            font-weight: bold;
+            font-size: 16px;
+            padding: 30px;
+            border-radius: 10px;
+            border: 2px solid #E74C3C;
+        }
+    """)
+    overlay.setAlignment(QtCore.Qt.AlignCenter)
+    overlay.setWordWrap(True)
+    overlay.setText(license_msg)
+    overlay.setGeometry(0, 0, main_widget.width(), main_widget.height())
+    overlay.raise_()
+    overlay.show()
+    
+    # Make overlay resize with main window
+    main_widget.resizeEvent = lambda event: (overlay.setGeometry(0, 0, event.size().width(), event.size().height()), overlay.raise_())
+    
+    # Show license input dialog as non-modal that doesn't block app closure
+    license_dialog = LicenseDialog(main_widget)
+    license_dialog.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+    license_dialog.show()
+
 if __name__ == '__main__':
     try:
         import resources_rc
@@ -40,7 +469,7 @@ if __name__ == '__main__':
             raise
 
 # Get the absolute path to the encrypted data file
-ENCRYPTED_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data.encrypted')
+ENCRYPTED_FILE_PATH = os.path.join(APP_DATA_DIR, 'data.encrypted')
 
 # Generate a secure 32-byte key using cryptography
 from cryptography.fernet import Fernet
@@ -51,8 +480,8 @@ import os
 import bcrypt
 import json
 
-USERS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.json')
-SUPPLIERS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'suppliers.json')
+USERS_FILE_PATH = os.path.join(APP_DATA_DIR, 'users.json')
+SUPPLIERS_FILE_PATH = os.path.join(APP_DATA_DIR, 'suppliers.json')
 
 # --- Key Derivation and Encryption Setup ---
 # Salt for key derivation (should be stored securely)
@@ -189,53 +618,57 @@ def ensure_suppliers_exist():
 class SupplierManagerDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
         self.setWindowTitle('إدارة الموردين')
         self.setMinimumSize(600, 400)
+        
+        # Center the dialog on the screen using a timer to ensure it's sized first
+        def center_dialog():
+            screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
+            center_point = screen.center()
+            self.move(center_point - self.rect().center())
+        
+        QtCore.QTimer.singleShot(0, center_dialog)
         self.setStyleSheet("""
-            QDialog {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                    stop:0 rgba(30, 58, 138, 0.95), 
-                    stop:1 rgba(30, 64, 175, 0.98));
+            QDialog, QWidget {
+                background-color: #faf2d9;
             }
             QLabel {
-                color: white;
+                color: black;
                 font-weight: bold;
                 font-size: 14px;
             }
             QListWidget {
-                background-color: white;
+                background-color: #f4f5f2;
                 border-radius: 12px;
-                color: #1E3A8A;
+                color: black;
                 font-size: 14px;
-                border: 2px solid rgba(255, 255, 255, 0.2);
+                border: 2px solid #d5cfd9;
                 padding: 8px;
             }
             QListWidget::item {
                 padding: 12px 16px;
                 border-radius: 6px;
                 margin: 4px;
-                background-color: rgba(245, 245, 245, 0.5);
+                background-color: #f4f5f2;
             }
             QListWidget::item:selected {
-                background-color: rgba(255, 255, 255, 0.3);
-                color: #1E3A8A;
+                background-color: #d5cfd9;
+                color: black;
                 font-weight: bold;
             }
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #10B981, stop:1 #059669);
-                color: white;
+                background-color: #d5cfd9;
+                color: black;
                 font-weight: bold;
                 font-size: 14px;
                 padding: 10px 20px;
                 border-radius: 8px;
-                border: 2px solid rgba(255, 255, 255, 0.3);
+                border: 2px solid #d5cfd9;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #34D399, stop:1 #10B981);
-                border: 2px solid rgba(255, 255, 255, 0.6);
-                
+                background-color: #faf2d9;
+                border: 2px solid #d5cfd9;
             }
         """)
         layout = QtWidgets.QVBoxLayout(self)
@@ -249,18 +682,18 @@ class SupplierManagerDialog(QtWidgets.QDialog):
                 font-size: 14px;
                 font-weight: bold;
                 padding: 5px;
-                border: 2px solid #E2E8F0;
+                border: 2px solid #d5cfd9;
                 border-radius: 8px;
-                background-color: white;
+                background-color: #f4f5f2;
             }
             QListWidget::item {
                 padding: 8px;
-                border-bottom: 1px solid #E2E8F0;
-                color: #1E3A8A;
+                border-bottom: 1px solid #d5cfd9;
+                color: black;
             }
             QListWidget::item:selected {
-                background-color: #1E3A8A;
-                color: white;
+                background-color: black;
+                color: black;
             }
         """)
         layout.addWidget(self.supplier_list)
@@ -272,8 +705,8 @@ class SupplierManagerDialog(QtWidgets.QDialog):
         self.add_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #10B981, stop:1 #059669);
-                color: white;
+                    stop:0 #e8e4e9, stop:1 #d5cfd9);
+                color: black;
                 font-weight: bold;
                 font-size: 14px;
                 padding: 10px 20px;
@@ -294,8 +727,8 @@ class SupplierManagerDialog(QtWidgets.QDialog):
         self.edit_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #1E3A8A, stop:1 #1E40AF);
-                color: white;
+                    stop:0 #d5cfd9, stop:1 #d5cfd9);
+                color: black;
                 font-weight: bold;
                 font-size: 14px;
                 padding: 10px 20px;
@@ -304,7 +737,7 @@ class SupplierManagerDialog(QtWidgets.QDialog):
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #2563EB, stop:1 #1E3A8A);
+                    stop:0 #d5cfd9, stop:1 #d5cfd9);
                 border: 2px solid rgba(255, 255, 255, 0.6);
                 
             }
@@ -316,8 +749,8 @@ class SupplierManagerDialog(QtWidgets.QDialog):
         self.delete_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #DC2626, stop:1 #B91C1C);
-                color: white;
+                    stop:0 #e8e4e9, stop:1 #d5cfd9);
+                color: black;
                 font-weight: bold;
                 font-size: 14px;
                 padding: 10px 20px;
@@ -437,23 +870,22 @@ class SupplierManagerDialog(QtWidgets.QDialog):
 class LoginDialog(QtWidgets.QDialog):
     def __init__(self):
         super().__init__()
+        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
         self.setWindowTitle('تسجيل الدخول')
         self.setModal(True)
         self.setFixedSize(480, 400)
         self.setStyleSheet("""
             QDialog {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                    stop:0 rgba(30, 58, 138, 0.95), 
-                    stop:1 rgba(30, 64, 175, 0.98));
+                background-color: #faf2d9;
             }
             QLabel {
-                color: white;
+                color: black;
                 font-weight: bold;
                 font-size: 16px;
             }
             QLineEdit {
-                background-color: white;
-                color: #1E3A8A;
+                background-color: #f4f5f2;
+                color: black;
                 border-radius: 8px;
                 padding: 15px 18px;
                 border: 2px solid rgba(255, 255, 255, 0.3);
@@ -465,15 +897,18 @@ class LoginDialog(QtWidgets.QDialog):
                 border: 2px solid rgba(255, 255, 255, 0.6);
             }
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #10B981, stop:1 #059669);
-                color: white;
+                background-color: #d5cfd9;
+                color: black;
                 font-weight: bold;
                 font-size: 16px;
                 border-radius: 8px;
                 padding: 15px 30px;
-                border: 2px solid rgba(255, 255, 255, 0.3);
+                border: 2px solid #d5cfd9;
                 min-height: 50px;
+            }
+            QPushButton:hover {
+                background-color: #faf2d9;
+                border: 2px solid #d5cfd9;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -482,8 +917,8 @@ class LoginDialog(QtWidgets.QDialog):
                 
             }
             QComboBox {
-                background-color: white;
-                color: #1E3A8A;
+                background-color: #f4f5f2;
+                color: black;
                 border-radius: 8px;
                 padding: 15px 18px;
                 border: 2px solid rgba(255, 255, 255, 0.3);
@@ -507,11 +942,11 @@ class LoginDialog(QtWidgets.QDialog):
                 height: 0;
             }
             QComboBox QAbstractItemView {
-                background-color: white;
-                color: #1E3A8A;
-                selection-background-color: #1E3A8A;
+                background-color: #f4f5f2;
+                color: black;
+                selection-background-color: #007AFF;
                 selection-color: white;
-                border: 1px solid #E2E8F0;
+                border: 1px solid #d5cfd9;
                 border-radius: 5px;
             }
         """)
@@ -523,6 +958,7 @@ class LoginDialog(QtWidgets.QDialog):
         self.userCombo = QtWidgets.QComboBox(self)
         self.userCombo.setEditable(False)
         self.userCombo.setMinimumHeight(55)
+        self.userCombo.setStyleSheet("QComboBox { background-color: #f4f5f2; color: black; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #d5cfd9; border-radius: 8px; } QComboBox:focus { border: 2px solid #d5cfd9; }")
         users = load_users()
         usernames = [user['username'] for user in users]
         self.userCombo.addItems(usernames)
@@ -531,6 +967,7 @@ class LoginDialog(QtWidgets.QDialog):
         self.passEdit.setPlaceholderText('كلمة المرور')
         self.passEdit.setEchoMode(QtWidgets.QLineEdit.Password)
         self.passEdit.setMinimumHeight(55)
+        self.passEdit.setStyleSheet("QLineEdit { background-color: #f4f5f2; color: black; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #d5cfd9; border-radius: 8px; } QLineEdit:focus { border: 2px solid #d5cfd9; }")
         self.loginBtn = QtWidgets.QPushButton('تسجيل الدخول', self)
         self.loginBtn.clicked.connect(self.login)
         
@@ -557,23 +994,22 @@ class LoginDialog(QtWidgets.QDialog):
 class UserManagerDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
         self.setWindowTitle('إدارة المستخدمين')
         self.setMinimumSize(600, 400)
         self.setStyleSheet("""
             QDialog {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                    stop:0 rgba(30, 58, 138, 0.95), 
-                    stop:1 rgba(30, 64, 175, 0.98));
+                background-color: #faf2d9;
             }
             QLabel {
-                color: white;
+                color: black;
                 font-weight: bold;
                 font-size: 14px;
             }
             QTableWidget {
-                background-color: white;
+                background-color: #f4f5f2;
                 border-radius: 12px;
-                color: #1E3A8A;
+                color: black;
                 font-size: 13px;
                 border: 2px solid rgba(255, 255, 255, 0.2);
             }
@@ -583,13 +1019,13 @@ class UserManagerDialog(QtWidgets.QDialog):
             }
             QTableWidget::item:selected {
                 background-color: rgba(255, 255, 255, 0.3);
-                color: #1E3A8A;
+                color: black;
                 font-weight: bold;
             }
             QHeaderView::section {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #1E3A8A, stop:1 #1E40AF);
-                color: white;
+                    stop:0 #d5cfd9, stop:1 #d5cfd9);
+                color: black;
                 font-weight: bold;
                 font-size: 13px;
                 padding: 12px;
@@ -599,7 +1035,7 @@ class UserManagerDialog(QtWidgets.QDialog):
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #10B981, stop:1 #059669);
-                color: white;
+                color: black;
                 font-weight: bold;
                 font-size: 13px;
                 padding: 8px 16px;
@@ -637,8 +1073,8 @@ class UserManagerDialog(QtWidgets.QDialog):
             btn.setStyleSheet("""
                 QPushButton {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #1E3A8A, stop:1 #1E40AF);
-                    color: white;
+                        stop:0 #d5cfd9, stop:1 #d5cfd9);
+                    color: black;
                     font-weight: bold;
                     font-size: 11px;
                     padding: 6px 10px;
@@ -647,7 +1083,7 @@ class UserManagerDialog(QtWidgets.QDialog):
                 }
                 QPushButton:hover {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #2563EB, stop:1 #1E3A8A);
+                        stop:0 #d5cfd9, stop:1 #d5cfd9);
                     border: 2px solid rgba(255, 255, 255, 0.6);
                     
                 }
@@ -660,7 +1096,7 @@ class UserManagerDialog(QtWidgets.QDialog):
                 QPushButton {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #64748B, stop:1 #475569);
-                    color: white;
+                    color: black;
                     font-weight: bold;
                     font-size: 11px;
                     padding: 6px 10px;
@@ -669,7 +1105,7 @@ class UserManagerDialog(QtWidgets.QDialog):
                 }
                 QPushButton:hover {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #94A3B8, stop:1 #64748B);
+                        stop:0 #d5cfd9, stop:1 #64748B);
                     border: 2px solid rgba(255, 255, 255, 0.6);
                     
                 }
@@ -681,7 +1117,7 @@ class UserManagerDialog(QtWidgets.QDialog):
                 QPushButton {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 #DC2626, stop:1 #B91C1C);
-                    color: white;
+                    color: black;
                     font-weight: bold;
                     font-size: 11px;
                     padding: 6px 10px;
@@ -881,11 +1317,23 @@ def get_outstanding_balance(provider):
         return 0.0
 
 def add_data(current_user=None):
-    Dialog = QtWidgets.QDialog(None, QtCore.Qt.Window)
+    Dialog = QtWidgets.QDialog(None, QtCore.Qt.Window | QtCore.Qt.WindowCloseButtonHint)
     ui2 = Ui_Dialog()
     if current_user:
         ui2.current_user = current_user['username']
     ui2.setupUi2(Dialog)
+    
+    # Add background widget to provide the #faf2d9 background color
+    background_widget = QtWidgets.QLabel(Dialog)
+    background_widget.setStyleSheet("background-color: #faf2d9;")
+    background_widget.setAlignment(QtCore.Qt.AlignCenter)
+    background_widget.lower()  # Move to bottom of widget stack so it's behind everything else
+    
+    # Use a timer to set the background widget geometry after dialog is shown
+    def set_background_geometry():
+        background_widget.setGeometry(0, 0, Dialog.width(), Dialog.height())
+    
+    QtCore.QTimer.singleShot(0, set_background_geometry)
     
     # Get the screen dimensions
     screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
@@ -903,60 +1351,60 @@ def add_data(current_user=None):
     Dialog.setMinimumSize(int(width * 0.8), int(height * 0.8))
     Dialog.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
     
-    # Set green background and styling directly on dialog after setup
+    # Set transparent background to prevent inheritance
     Dialog.setStyleSheet("""
-        background-color: #F8FAFC;
+        background-color: transparent;
         QLabel {
-            color: #64748B;
+            color: black;
             font-weight: bold;
             font-size: 14px;
         }
         QLineEdit, QComboBox {
-            background-color: white;
-            color: #1E3A8A;
+            background-color: #f4f5f2;
+            color: black;
             font-weight: bold;
             font-size: 14px;
             padding: 12px 16px;
-            border: 2px solid #E2E8F0;
+            border: 2px solid #d5cfd9;
             border-radius: 8px;
         }
         QLineEdit:focus, QComboBox:focus {
-            border: 2px solid #1E3A8A;
-            background-color: white;
+            border: 2px solid #d5cfd9;
+            background-color: #f4f5f2;
         }
         QLineEdit:disabled {
-            background-color: #F1F5F9;
-            color: #94A3B8;
+            background-color: #f4f5f2;
+            color: black;
         }
         QTableWidget {
-            background-color: white;
-            color: #1E3A8A;
+            background-color: #f4f5f2;
+            color: black;
             font-weight: bold;
             font-size: 13px;
-            border: 2px solid #E2E8F0;
+            border: 2px solid #d5cfd9;
             border-radius: 8px;
-            gridline-color: #E2E8F0;
+            gridline-color: black;
         }
         QTableWidget::item {
             padding: 12px;
             border: none;
             border-radius: 0px;
-            background-color: white;
+            background-color: #f4f5f2;
         }
         QTableWidget::item:selected {
-            background-color: #1E3A8A;
-            color: white;
+            background-color: black;
+            color: black;
             font-weight: bold;
         }
         QTableWidget::item:focus {
-            background-color: #3B82F6;
-            color: white;
+            background-color: black;
+            color: black;
         }
         QHeaderView::section {
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #1E3A8A, stop:1 #1E40AF);
-            color: white;
-            font-weight: bold;
+                stop:0 #d5cfd9, stop:1 #d5cfd9);
+            color: black;
+            font-weight: bold !important;
             font-size: 13px;
             padding: 12px 16px;
             border: none;
@@ -965,40 +1413,40 @@ def add_data(current_user=None):
         QGroupBox {
             font-size: 15px;
             font-weight: bold;
-            border: 2px solid #E2E8F0;
+            border: 2px solid #d5cfd9;
             border-radius: 12px;
             margin-top: 20px;
             padding-top: 20px;
-            background-color: white;
-            color: #1E3A8A;
+            background-color: #f4f5f2;
+            color: black;
         }
         QGroupBox::title {
             subcontrol-origin: margin;
             left: 12px;
             padding: 0 8px 0 8px;
-            color: #1E3A8A;
+            color: black;
         }
         QPushButton {
             background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 #1E3A8A, stop:1 #1E40AF);
-            color: white;
+                stop:0 #d5cfd9, stop:1 #d5cfd9);
+            color: black;
             font-weight: bold;
             font-size: 14px;
             padding: 12px 24px;
             border-radius: 8px;
-            border: 2px solid #1E3A8A;
+            border: 2px solid #d5cfd9;
         }
         QPushButton:hover {
             background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 #2563EB, stop:1 #1E3A8A);
-            border: 2px solid #2563EB;
+                stop:0 #d5cfd9, stop:1 #d5cfd9);
+            border: 2px solid #d5cfd9;
         }
         QPushButton:pressed {
             background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 #1E40AF, stop:1 #1E3A8A);
+                stop:0 #d5cfd9, stop:1 #d5cfd9);
         }
         QRadioButton {
-            color: #64748B;
+            color: black;
             font-size: 14px;
             spacing: 8px;
             padding: 8px 12px;
@@ -1009,7 +1457,7 @@ def add_data(current_user=None):
             height: 18px;
         }
         QRadioButton:hover {
-            background-color: #F1F5F9;
+            background-color: #f4f5f2;
             border-radius: 4px;
         }
     """)
@@ -1038,16 +1486,16 @@ class Ui_Dialog(object):
         self.comboBox.addItems(["اختر المورد"] + suppliers)
         self.comboBox.setStyleSheet("""
             QComboBox {
-                background-color: white;
-                color: #1E3A8A;
+                background-color: #f4f5f2;
+                color: black;
                 font-weight: bold;
                 font-size: 14px;
                 padding: 12px 16px;
-                border: 2px solid #E2E8F0;
+                border: 2px solid #d5cfd9;
                 border-radius: 8px;
             }
             QComboBox:focus {
-                border: 2px solid #1E3A8A;
+                border: 2px solid #d5cfd9;
             }
             QComboBox::drop-down {
                 border: none;
@@ -1062,11 +1510,11 @@ class Ui_Dialog(object):
                 height: 0;
             }
             QComboBox QAbstractItemView {
-                background-color: white;
-                color: #1E3A8A;
-                selection-background-color: #1E3A8A;
+                background-color: #f4f5f2;
+                color: black;
+                selection-background-color: #007AFF;
                 selection-color: white;
-                border: 1px solid #E2E8F0;
+                border: 1px solid #d5cfd9;
                 border-radius: 5px;
             }
         """)
@@ -1122,16 +1570,16 @@ class Ui_Dialog(object):
         self.textEdit.setMinimumHeight(40)
         self.textEdit.setStyleSheet("""
             QLineEdit {
-                background-color: white;
-                color: #1E3A8A;
+                background-color: #f4f5f2;
+                color: black;
                 font-weight: bold;
                 font-size: 16px;
                 padding: 12px 16px;
-                border: 2px solid #E2E8F0;
+                border: 2px solid #d5cfd9;
                 border-radius: 8px;
             }
             QLineEdit:focus {
-                border: 2px solid #1E3A8A;
+                border: 2px solid #d5cfd9;
             }
         """)
         row_layout.addWidget(self.textEdit, 2)
@@ -1151,10 +1599,10 @@ class Ui_Dialog(object):
             font-size: 16px;
             font-weight: bold;
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #F1F5F9, stop:1 #E2E8F0);
+                stop:0 #f4f5f2, stop:1 #d5cfd9);
             border: 2px solid #64748B;
             padding: 12px 16px;
-            color: #1E3A8A;
+            color: black;
             border-radius: 8px;
         """)
         row_layout2.addWidget(self.amountReturnedLabel, 2)
@@ -1166,16 +1614,16 @@ class Ui_Dialog(object):
         self.orderCodeEdit.setMinimumHeight(40)
         self.orderCodeEdit.setStyleSheet("""
             QLineEdit {
-                background-color: white;
-                color: #1E3A8A;
+                background-color: #f4f5f2;
+                color: black;
                 font-weight: bold;
                 font-size: 16px;
                 padding: 12px 16px;
-                border: 2px solid #E2E8F0;
+                border: 2px solid #d5cfd9;
                 border-radius: 8px;
             }
             QLineEdit:focus {
-                border: 2px solid #1E3A8A;
+                border: 2px solid #d5cfd9;
             }
         """)
         # Set validator for 10-digit number
@@ -1190,18 +1638,18 @@ class Ui_Dialog(object):
             QGroupBox {
                 font-size: 15px;
                 font-weight: bold;
-                border: 2px solid #E2E8F0;
+                border: 2px solid #d5cfd9;
                 border-radius: 12px;
                 margin-top: 20px;
                 padding-top: 20px;
-                background-color: white;
-                color: #1E3A8A;
+                background-color: #f4f5f2;
+                color: black;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 12px;
                 padding: 0 8px 0 8px;
-                color: #1E3A8A;
+                color: black;
             }
         """)
         
@@ -1217,32 +1665,37 @@ class Ui_Dialog(object):
         self.partial_radio = QtWidgets.QRadioButton("دفع جزئي")
         self.debt_radio = QtWidgets.QRadioButton("دَيْن (دفع لاحقاً)")
         
-        # Style radio buttons with proper text visibility
+        # Style radio buttons with proper text visibility and background color
         radio_style = """
             QRadioButton {
                 font-size: 14px;
-                color: #64748B;
-                spacing: 5px;
-                padding: 5px 8px;
+                color: black;
+                spacing: 10px;
+                padding: 12px;
+                background-color: #f4f5f2;
                 font-weight: bold;
             }
             QRadioButton::indicator {
-                width: 16px;
-                height: 16px;
-            }
-            QRadioButton:hover {
-                background-color: #F1F5F9;
-                border-radius: 4px;
+                width: 18px;
+                height: 18px;
             }
         """
         
-        # Apply styles to all radio buttons
-        for radio in [self.cash_radio, self.partial_radio, self.debt_radio]:
-            radio.setStyleSheet(radio_style)
-            radio_button_layout.addWidget(radio)
+        # Apply styles to all radio buttons and distribute them evenly
+        radio_button_layout.addWidget(self.cash_radio)
+        self.cash_radio.setStyleSheet(radio_style)
         
-        # Add stretch to push buttons to the left
-        radio_button_layout.addStretch()
+        radio_button_layout.addStretch(1)  # Space between first and second
+        
+        radio_button_layout.addWidget(self.partial_radio)
+        self.partial_radio.setStyleSheet(radio_style)
+        
+        radio_button_layout.addStretch(1)  # Space between second and third
+        
+        radio_button_layout.addWidget(self.debt_radio)
+        self.debt_radio.setStyleSheet(radio_style)
+        
+        radio_button_layout.addStretch(1)  # Space at the end
         
         # Set default selection
         self.cash_radio.setChecked(True)
@@ -1258,25 +1711,8 @@ class Ui_Dialog(object):
         self.payment_amount_input.setPlaceholderText("0.00")
         self.payment_amount_input.setEnabled(False)  # Disabled by default
         self.payment_amount_input.setValidator(QtGui.QDoubleValidator(0, 999999.99, 2))
-        self.payment_amount_input.setStyleSheet("""
-            QLineEdit {
-                background-color: white;
-                color: #1E3A8A;
-                font-weight: bold;
-                font-size: 14px;
-                padding: 12px 16px;
-                border: 2px solid #E2E8F0;
-                border-radius: 8px;
-                min-width: 100px;
-            }
-            QLineEdit:focus {
-                border: 2px solid #1E3A8A;
-            }
-            QLineEdit:disabled {
-                background-color: #F1F5F9;
-                color: #94A3B8;
-            }
-        """)
+        # Apply styling with explicit background after creation
+        self.payment_amount_input.setStyleSheet("background-color: #f4f5f2; color: black; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #d5cfd9; border-radius: 8px; min-width: 100px;")
         
         # Net owed label
         self.net_owed_label_text = QtWidgets.QLabel("باقي المديونية للشركة:")
@@ -1287,7 +1723,7 @@ class Ui_Dialog(object):
         self.net_owed_label.setText("0.00")
         self.net_owed_label.setReadOnly(True)
         self.net_owed_label.setValidator(QtGui.QDoubleValidator(0, 999999.99, 2))
-        self.net_owed_label.setStyleSheet("QLineEdit { background-color: white; color: #1E3A8A; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #E2E8F0; border-radius: 8px; min-width: 100px; } QLineEdit:focus { border: 2px solid #1E3A8A; } QLineEdit:disabled { background-color: #F1F5F9; color: #94A3B8; }")
+        self.net_owed_label.setStyleSheet("background-color: #f4f5f2; color: black; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #d5cfd9; border-radius: 8px; min-width: 100px;")
         
         # Add widgets to payment amount layout with better spacing - RTL order
         self.payment_amount_layout.addWidget(self.payment_amount_label)  # Label first in RTL
@@ -1409,10 +1845,10 @@ class Ui_Dialog(object):
                     font-size: 16px;
                     font-weight: bold;
                     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 #F1F5F9, stop:1 #E2E8F0);
+                        stop:0 #f4f5f2, stop:1 #d5cfd9);
                     border: 2px solid #64748B;
                     padding: 12px 16px;
-                    color: #1E3A8A;
+                    color: black;
                     border-radius: 8px;
                 """)
             
@@ -1433,10 +1869,10 @@ class Ui_Dialog(object):
                     QLineEdit {
                         font-size: 13px;
                         padding: 8px;
-                        border: 1px solid #1E3A8A;
+                        border: 1px solid #d5cfd9;
                         border-radius: 4px;
-                        background-color: white;
-                        color: #1E3A8A;
+                        background-color: #f4f5f2;
+                        color: black;
                         font-weight: bold;
                     }
                 """)
@@ -1481,9 +1917,9 @@ class Ui_Dialog(object):
         self.medicineTable.setStyleSheet("""
             QTableWidget {
                 font-size: 13px;
-                gridline-color: #E2E8F0;
-                background-color: white;
-                border: 2px solid #E2E8F0;
+                gridline-color: black;
+                background-color: #f4f5f2;
+                border: 2px solid #d5cfd9;
                 border-radius: 8px;
             }
             QTableWidget::item {
@@ -1491,26 +1927,26 @@ class Ui_Dialog(object):
                 padding: 8px;
                 border: none;
                 border-radius: 0px;
-                background-color: white;
-                color: #1E3A8A;
+                background-color: #f4f5f2;
+                color: black;
             }
             QTableWidget::item:selected {
-                background-color: #1E3A8A;
-                color: white;
+                background-color: black;
+                color: black;
                 font-weight: bold;
             }
             QTableWidget::item:focus {
-                background-color: #3B82F6;
-                color: white;
+                background-color: black;
+                color: black;
             }
             QHeaderView::section {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #1E3A8A, stop:1 #1E40AF);
-                color: white;
+                    stop:0 #d5cfd9, stop:1 #d5cfd9);
+                color: black;
                 font-weight: bold;
                 font-size: 13px;
                 padding: 10px;
-                border: 1px solid #1E3A8A;
+                border: 1px solid #d5cfd9;
                 border-radius: 0px;
             }
         """)
@@ -1522,19 +1958,18 @@ class Ui_Dialog(object):
         self.addRowBtn = QtWidgets.QPushButton("إضافة", Dialog)
         self.addRowBtn.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #1E3A8A, stop:1 #1E40AF);
-                color: white;
+                background-color: #e8e4e9;
+                color: black;
                 font-weight: bold;
                 font-size: 14px;
                 padding: 10px 20px;
                 border-radius: 8px;
-                border: 2px solid #1E3A8A;
+                border: 2px solid #d5cfd9;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #2563EB, stop:1 #1E3A8A);
-                border: 2px solid #2563EB;
+                    stop:0 #d5cfd9, stop:1 #d5cfd9);
+                border: 2px solid #d5cfd9;
             }
         """)
         self.addRowBtn.clicked.connect(self.addMedicineRow)
@@ -1543,18 +1978,18 @@ class Ui_Dialog(object):
         self.removeRowBtn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #64748B, stop:1 #475569);
-                color: white;
+                    stop:0 #e8e4e9, stop:1 #d5cfd9);
+                color: black;
                 font-weight: bold;
                 font-size: 14px;
                 padding: 10px 20px;
                 border-radius: 8px;
-                border: 2px solid #64748B;
+                border: 2px solid #e8e4e9;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #94A3B8, stop:1 #64748B);
-                border: 2px solid #94A3B8;
+                    stop:0 #d5cfd9, stop:1 #64748B);
+                border: 2px solid #d5cfd9;
             }
         """)
         self.removeRowBtn.clicked.connect(self.removeMedicineRow)
@@ -1569,7 +2004,7 @@ class Ui_Dialog(object):
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #10B981, stop:1 #059669);
-                color: white;
+                color: black;
                 font-weight: bold;
                 font-size: 18px;
                 padding: 15px 30px;
@@ -1647,10 +2082,8 @@ class Ui_Dialog(object):
             
             # Update the net owed field with color coding
             self.net_owed_label.setText(f"{net_owed:.2f}")
-            if net_owed > 0:
-                self.net_owed_label.setStyleSheet("QLineEdit { background-color: #FEF2F2; color: #DC2626; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #FCA5A5; border-radius: 8px; min-width: 100px; } QLineEdit:focus { border: 2px solid #DC2626; } QLineEdit:disabled { background-color: #FEE2E2; color: #FCA5A5; }")
-            else:
-                self.net_owed_label.setStyleSheet("QLineEdit { background-color: white; color: #1E3A8A; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #E2E8F0; border-radius: 8px; min-width: 100px; } QLineEdit:focus { border: 2px solid #1E3A8A; } QLineEdit:disabled { background-color: #F1F5F9; color: #94A3B8; }")
+            # Always use #f4f5f2 background color regardless of conditions
+            self.net_owed_label.setStyleSheet("QLineEdit { background-color: #f4f5f2 !important; color: black; font-weight: bold !important; font-size: 14px; padding: 12px 16px; border: 2px solid #d5cfd9; border-radius: 8px; min-width: 100px; } QLineEdit:focus { border: 2px solid #d5cfd9; } QLineEdit:disabled { background-color: #f4f5f2 !important; color: black; }")
                 
             self.net_owed_label.setText(f"{net_owed:.2f}")
             
@@ -1841,13 +2274,10 @@ class Ui_Form(object):
         self.user = user
 
     def handle_resize(self, event):
-        # Update background label size when window is resized
-        self.background_label.setGeometry(0, 0, self.Form.width(), self.Form.height())
-        
         # Update overlay size when window is resized
         if hasattr(self, 'overlay'):
             self.overlay.setGeometry(0, 0, self.Form.width(), self.Form.height())
-        
+
         # Call the original resize event
         event.accept()
 
@@ -1868,30 +2298,11 @@ class Ui_Form(object):
 
         # Connect resize event
         Form.resizeEvent = self.handle_resize
-        
-        # Always load the background image
-        bg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resources/images/Pharmacist.jpeg')
-        bg_image = QtGui.QPixmap(bg_path)
 
         if not Form.objectName():
             Form.setObjectName(u"Form")
-            # Get the image size to determine aspect ratio
-            img_width = bg_image.width()
-            img_height = bg_image.height()
-            # Calculate aspect ratio
-            aspect_ratio = img_width / img_height
-            # Scale down the image size by 50% while maintaining aspect ratio
-            scale_factor = 0.5  # 50% of original size
-            window_width = int(img_width * scale_factor)
-            window_height = int(img_height * scale_factor)
-            Form.resize(window_width, window_height)
-
-        # Create a QLabel for the background image
-        self.background_label = QtWidgets.QLabel(Form)
-        self.background_label.setGeometry(0, 0, Form.width(), Form.height())
-        self.background_label.setPixmap(bg_image)
-        self.background_label.setScaledContents(True)  # This will scale the image to fit the label
-        self.background_label.lower()  # Send it to the back
+            # Set default window size without background image
+            Form.resize(1024, 768)
         
         # Create modern gradient overlay
         self.overlay = QtWidgets.QWidget(Form)
@@ -1899,10 +2310,7 @@ class Ui_Form(object):
         self.overlay.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.overlay.setStyleSheet("""
             QWidget {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                    stop:0 rgba(30, 58, 138, 0.85), 
-                    stop:0.5 rgba(30, 64, 175, 0.88), 
-                    stop:1 rgba(30, 58, 138, 0.92));
+                background-color: #faf2d9;
             }
         """)
         
@@ -1937,7 +2345,7 @@ class Ui_Form(object):
                 font-weight: bold;
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
                     stop:0 #10B981, stop:1 #059669);
-                color: white;
+                color: black;
                 border: 3px solid rgba(255, 255, 255, 0.3);
             }
             QPushButton:hover {
@@ -1965,19 +2373,19 @@ class Ui_Form(object):
                 font-size: 16px;
                 font-weight: bold;
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                    stop:0 #1E3A8A, stop:1 #1E40AF);
-                color: white;
+                    stop:0 #d5cfd9, stop:1 #d5cfd9);
+                color: black;
                 border: 3px solid rgba(255, 255, 255, 0.3);
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                    stop:0 #2563EB, stop:1 #1E3A8A);
+                    stop:0 #d5cfd9, stop:1 #d5cfd9);
                 border: 3px solid rgba(255, 255, 255, 0.6);
                 
             }
             QPushButton:pressed {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
-                    stop:0 #1E40AF, stop:1 #1E3A8A);
+                    stop:0 #d5cfd9, stop:1 #d5cfd9);
             }
         """)
         button_widget_layout.addWidget(self.showDataButton)
@@ -2000,7 +2408,7 @@ class Ui_Form(object):
                 QPushButton {
                     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
                         stop:0 #64748B, stop:1 #475569);
-                    color: white;
+                    color: black;
                     font-size: 16px;
                     font-weight: bold;
                     border-radius: 25px;
@@ -2009,7 +2417,7 @@ class Ui_Form(object):
                 }
                 QPushButton:hover {
                     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 #94A3B8, stop:1 #64748B);
+                        stop:0 #d5cfd9, stop:1 #64748B);
                     border: 2px solid rgba(255, 255, 255, 0.6);
                     
                 }
@@ -2022,8 +2430,8 @@ class Ui_Form(object):
             self.manageSuppliersButton.setStyleSheet("""
                 QPushButton {
                     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 #1E3A8A, stop:1 #1E40AF);
-                    color: white;
+                        stop:0 #d5cfd9, stop:1 #d5cfd9);
+                    color: black;
                     font-size: 16px;
                     font-weight: bold;
                     border-radius: 25px;
@@ -2032,7 +2440,7 @@ class Ui_Form(object):
                 }
                 QPushButton:hover {
                     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 #2563EB, stop:1 #1E3A8A);
+                        stop:0 #d5cfd9, stop:1 #d5cfd9);
                     border: 2px solid rgba(255, 255, 255, 0.6);
                     
                 }
@@ -2047,7 +2455,7 @@ class Ui_Form(object):
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
                     stop:0 #10B981, stop:1 #059669);
-                color: white;
+                color: black;
                 font-size: 16px;
                 font-weight: bold;
                 border-radius: 25px;
@@ -2143,7 +2551,7 @@ class Ui_Form(object):
 
         # Create a new dialog to show the data
         print('Before creating dialog')
-        Dialog = QtWidgets.QDialog(self.Form, QtCore.Qt.Window)
+        Dialog = QtWidgets.QDialog(self.Form, QtCore.Qt.Window | QtCore.Qt.WindowCloseButtonHint)
         Dialog.setWindowTitle("عرض البيانات - متتبع الأسعار")
         Dialog.setLayoutDirection(QtCore.Qt.RightToLeft)  # Set RTL for Arabic
         # Set window flags to ensure proper window management
@@ -2156,56 +2564,59 @@ class Ui_Form(object):
         # Set base stylesheet for the dialog to ensure proper colors - professional light theme
         Dialog.setStyleSheet("""
             QDialog, QWidget {
-                background-color: #F8FAFC;
-                color: #1E3A8A;
+                background-color: #faf2d9;
+                color: black;
+                font-weight: bold;
             }
             QLabel, QComboBox, QLineEdit, QDateEdit, QPushButton {
-                color: #64748B;
+                color: black;
+                font-weight: bold;
             }
             QTableWidget {
-                gridline-color: #E2E8F0;
-                background-color: white;
-                border: 2px solid #E2E8F0;
+                gridline-color: black;
+                background-color: #f4f5f2;
+                border: 2px solid #d5cfd9;
                 border-radius: 8px;
+                font-weight: bold;
             }
             QHeaderView::section {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #1E3A8A, stop:1 #1E40AF);
+                    stop:0 #d5cfd9, stop:1 #d5cfd9);
                 padding: 8px;
-                border: 1px solid #1E3A8A;
+                border: 1px solid #d5cfd9;
                 font-weight: bold;
-                color: white;
+                color: black;
             }
             QTableWidget::item {
                 padding: 8px;
-                color: #1E3A8A;
+                color: black;
             }
             QTableWidget::item:selected {
-                background-color: #1E3A8A;
-                color: white;
+                background-color: black;
+                color: black;
             }
             QComboBox, QLineEdit, QDateEdit {
-                background-color: white;
-                border: 2px solid #E2E8F0;
+                background-color: #f4f5f2;
+                border: 2px solid #d5cfd9;
                 padding: 8px 12px;
                 border-radius: 8px;
-                color: #1E3A8A;
+                color: black;
                 font-weight: bold;
             }
             QComboBox:focus, QLineEdit:focus, QDateEdit:focus {
-                border: 2px solid #1E3A8A;
+                border: 2px solid #d5cfd9;
             }
             QComboBox QAbstractItemView {
-                background-color: white;
-                color: #1E3A8A;
-                selection-background-color: #1E3A8A;
+                background-color: #f4f5f2;
+                color: black;
+                selection-background-color: #007AFF;
                 selection-color: white;
-                border: 1px solid #E2E8F0;
+                border: 1px solid #d5cfd9;
             }
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #1E3A8A, stop:1 #1E40AF);
-                color: white;
+                    stop:0 #d5cfd9, stop:1 #d5cfd9);
+                color: black;
                 border: none;
                 padding: 8px 16px;
                 border-radius: 8px;
@@ -2213,7 +2624,7 @@ class Ui_Form(object):
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #2563EB, stop:1 #1E3A8A);
+                    stop:0 #d5cfd9, stop:1 #d5cfd9);
             }
         """)
         
@@ -2235,17 +2646,17 @@ class Ui_Form(object):
             QGroupBox {
                 font-size: 14px;
                 font-weight: bold;
-                border: 2px solid #E2E8F0;
+                border: 2px solid #d5cfd9;
                 border-radius: 8px;
                 margin-top: 10px;
                 padding-top: 15px;
-                color: #1E3A8A;
+                color: black;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 5px;
-                color: #1E3A8A;
+                color: black;
             }
         """)
         
@@ -2266,14 +2677,14 @@ class Ui_Form(object):
                 font-size: 14px;
                 min-width: 200px;
                 padding: 8px 12px;
-                border: 2px solid #E2E8F0;
+                border: 2px solid #d5cfd9;
                 border-radius: 8px;
-                color: #1E3A8A;
+                color: black;
                 font-weight: bold;
-                background-color: white;
+                background-color: #f4f5f2;
             }
             QComboBox:focus {
-                border: 2px solid #1E3A8A;
+                border: 2px solid #d5cfd9;
             }
             QComboBox::drop-down {
                 border: none;
@@ -2288,11 +2699,11 @@ class Ui_Form(object):
                 height: 0;
             }
             QComboBox QAbstractItemView {
-                background-color: white;
-                color: #1E3A8A;
-                selection-background-color: #1E3A8A;
+                background-color: #f4f5f2;
+                color: black;
+                selection-background-color: #007AFF;
                 selection-color: white;
-                border: 1px solid #E2E8F0;
+                border: 1px solid #d5cfd9;
             }
         """)
         self.provider_combo.addItem("جميع الموردين")
@@ -2324,21 +2735,21 @@ class Ui_Form(object):
             QDateEdit {
                 font-size: 14px;
                 min-width: 120px;
-                background-color: white;
-                color: #1E3A8A;
-                border: 2px solid #E2E8F0;
+                background-color: #f4f5f2;
+                color: black;
+                border: 2px solid #d5cfd9;
                 border-radius: 8px;
                 padding: 8px 12px;
                 font-weight: bold;
             }
             QDateEdit:focus {
-                border: 2px solid #1E3A8A;
+                border: 2px solid #d5cfd9;
             }
             QDateEdit::drop-down {
                 subcontrol-origin: padding;
                 subcontrol-position: top right;
                 width: 20px;
-                border-left: 1px solid #E2E8F0;
+                border-left: 1px solid #d5cfd9;
             }
             QDateEdit::down-arrow {
                 image: none;
@@ -2349,8 +2760,8 @@ class Ui_Form(object):
                 height: 0;
             }
             QCalendarWidget QTableView {
-                background-color: white;
-                color: #1E3A8A;
+                background-color: #f4f5f2;
+                color: black;
             }
         """
         
@@ -2360,7 +2771,7 @@ class Ui_Form(object):
         self.start_date_edit.setStyleSheet(date_edit_style)
         
         to_label = QtWidgets.QLabel("إلى")
-        to_label.setStyleSheet("font-size: 14px; padding: 0 5px; color: #64748B;")
+        to_label.setStyleSheet("font-size: 14px; padding: 0 5px; color: black;")
         
         self.end_date_edit = QtWidgets.QDateEdit()
         self.end_date_edit.setCalendarPopup(True)
@@ -2368,7 +2779,7 @@ class Ui_Form(object):
         self.end_date_edit.setStyleSheet(date_edit_style)
         
         # Set calendar popup style
-        calendar_style = "QCalendarWidget QAbstractItemView:enabled { color: #1E3A8A; background-color: white; selection-background-color: #10B981; selection-color: white; } QCalendarWidget QWidget#qt_calendar_navigationbar { background-color: #1E3A8A; color: white; } QCalendarWidget QToolButton { background-color: transparent; color: white; border: none; } QCalendarWidget QToolButton:hover { background-color: rgba(255, 255, 255, 0.2); }"
+        calendar_style = "QCalendarWidget QAbstractItemView:enabled { color: #1B263B; background-color: #f4f5f2; selection-background-color: #007AFF; selection-color: white; } QCalendarWidget QWidget#qt_calendar_navigationbar { background-color: #415A77; color: white; } QCalendarWidget QToolButton { background-color: transparent; color: #1B263B; border: none; } QCalendarWidget QToolButton:hover { background-color: rgba(0, 122, 255, 0.2); }"
         # Apply styles to both calendar widgets
         start_calendar = self.start_date_edit.calendarWidget()
         end_calendar = self.end_date_edit.calendarWidget()
@@ -2386,7 +2797,7 @@ class Ui_Form(object):
         
         # Apply filter button
         self.apply_filter_btn = QtWidgets.QPushButton("تطبيق المرشحات")
-        self.apply_filter_btn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #10B981, stop:1 #059669); color: white; font-weight: bold; font-size: 14px; padding: 10px 20px; border-radius: 8px; border: 2px solid rgba(255, 255, 255, 0.3); min-width: 150px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #34D399, stop:1 #10B981); border: 2px solid rgba(255, 255, 255, 0.6); } QPushButton:pressed { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #059669, stop:1 #047857); }")
+        self.apply_filter_btn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e8e4e9, stop:1 #d5cfd9); color: black; font-weight: bold; font-size: 14px; padding: 10px 20px; border-radius: 8px; border: 2px solid #e8e4e9; min-width: 150px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d5cfd9, stop:1 #e8e4e9); border: 2px solid #d5cfd9; }")
         
         # Add widgets to filter row
         filter_row.addWidget(provider_label)
@@ -2415,7 +2826,7 @@ class Ui_Form(object):
         self.total_purchases_label = QtWidgets.QLabel("إجمالي المشتريات: 0.00")
         
         for label in [self.total_owed_label, self.total_returned_label, self.total_purchases_label]:
-            label.setStyleSheet("font-size: 14px; font-weight: bold; padding: 8px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; margin: 2px; color: #1E3A8A;")
+            label.setStyleSheet("font-size: 14px; font-weight: bold; padding: 8px; background-color: #f4f5f2; border: 1px solid #d5cfd9; border-radius: 8px; margin: 2px; color: black;")
             summary_layout.addWidget(label)
         
         # Add summary layout to filter layout
@@ -2553,7 +2964,7 @@ class Ui_Form(object):
                 
                 # Add View button for returned types
                 view_btn = QtWidgets.QPushButton("عرض")
-                view_btn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E3A8A, stop:1 #1E40AF); color: white; font-weight: bold; font-size: 12px; padding: 5px 12px; border-radius: 6px; border: 2px solid rgba(255, 255, 255, 0.3); min-width: 60px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2563EB, stop:1 #1E3A8A); } QPushButton:pressed { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E40AF, stop:1 #1E3A8A); }")
+                view_btn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e8e4e9, stop:1 #d5cfd9); color: black; font-weight: bold; font-size: 12px; padding: 5px 12px; border-radius: 6px; border: 2px solid #e8e4e9; min-width: 60px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d5cfd9, stop:1 #e8e4e9); border: 2px solid #d5cfd9; }")
                 view_btn.setCursor(QtCore.Qt.PointingHandCursor)
                 
                 # Connect the button to show returned types for this row
@@ -2893,7 +3304,7 @@ class Ui_Form(object):
             
             # Delete button
             delete_button = QtWidgets.QPushButton("حذف الصف المحدد")
-            delete_button.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #DC2626, stop:1 #B91C1C); color: white; font-weight: bold; font-size: 15px; padding: 10px 20px; border-radius: 8px; border: 2px solid rgba(255, 255, 255, 0.3); min-width: 180px; min-height: 35px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #EF4444, stop:1 #DC2626); } QPushButton:pressed { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #B91C1C, stop:1 #991B1B); }")
+            delete_button.setStyleSheet("QPushButton { background-color: #e8e4e9; color: black; font-weight: bold; font-size: 15px; padding: 10px 20px; border-radius: 8px; border: 2px solid #e8e4e9; min-width: 180px; min-height: 35px; } QPushButton:hover { background-color: #d5cfd9; border: 2px solid #d5cfd9; }")
             delete_button.setMinimumHeight(35)
             
             def delete_selected():
@@ -2969,7 +3380,7 @@ class Ui_Form(object):
 
             # Edit button
             edit_button = QtWidgets.QPushButton("تحرير الصف المحدد")
-            edit_button.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E3A8A, stop:1 #1E40AF); color: white; font-weight: bold; font-size: 15px; padding: 10px 20px; border-radius: 8px; border: 2px solid rgba(255, 255, 255, 0.3); min-width: 180px; min-height: 35px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2563EB, stop:1 #1E3A8A); } QPushButton:pressed { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E40AF, stop:1 #1E3A8A); }")
+            edit_button.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e8e4e9, stop:1 #d5cfd9); color: black; font-weight: bold; font-size: 15px; padding: 10px 20px; border-radius: 8px; border: 2px solid #e8e4e9; min-width: 180px; min-height: 35px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d5cfd9, stop:1 #e8e4e9); border: 2px solid #d5cfd9; }")
             edit_button.setMinimumHeight(35)
             
             # Add edit button to layout
@@ -2989,6 +3400,7 @@ class Ui_Form(object):
                 
                 # Create dialog to display returned types
                 dialog = QtWidgets.QDialog(parent_dialog)
+                dialog.setWindowFlags(dialog.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
                 dialog.setWindowTitle("أنواع الأدوية المرتجعة")
                 dialog.setWindowModality(QtCore.Qt.WindowModal)
                 dialog.resize(600, 400)
@@ -3045,7 +3457,7 @@ class Ui_Form(object):
                 # Add close button
                 close_btn = QtWidgets.QPushButton("إغلاق")
                 close_btn.clicked.connect(dialog.accept)
-                close_btn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #64748B, stop:1 #475569); color: white; font-weight: bold; font-size: 14px; padding: 10px 20px; border-radius: 8px; border: 2px solid rgba(255, 255, 255, 0.3); min-width: 100px; min-height: 30px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #94A3B8, stop:1 #64748B); } QPushButton:pressed { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #475569, stop:1 #334155); }")
+                close_btn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e8e4e9, stop:1 #d5cfd9); color: black; font-weight: bold; font-size: 14px; padding: 10px 20px; border-radius: 8px; border: 2px solid #e8e4e9; min-width: 100px; min-height: 30px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d5cfd9, stop:1 #e8e4e9); border: 2px solid #d5cfd9; }")
                 
                 # Center the close button
                 btn_layout = QtWidgets.QHBoxLayout()
@@ -3102,11 +3514,12 @@ class Ui_Form(object):
                 
                 # Create edit dialog similar to add data dialog
                 edit_dialog = QtWidgets.QDialog(Dialog)
+                edit_dialog.setWindowFlags(edit_dialog.windowFlags() & ~QtCore.Qt.WindowContextHelpButtonHint)
                 edit_dialog.setWindowTitle("تحرير البيانات - متتبع الأسعار")
                 edit_dialog.setLayoutDirection(QtCore.Qt.RightToLeft)  # Set RTL for Arabic
                 edit_dialog.resize(700, 500)
                 
-                edit_dialog.setStyleSheet("background-color: #F8FAFC; QLabel { color: #64748B; font-weight: bold; font-size: 14px; } QLineEdit, QComboBox, QTableWidget { background-color: white; color: #1E3A8A; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #E2E8F0; border-radius: 8px; } QLineEdit:focus, QComboBox:focus { border: 2px solid #1E3A8A; background-color: white; } QLineEdit:disabled { background-color: #F1F5F9; color: #94A3B8; } QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E3A8A, stop:1 #1E40AF); color: white; font-weight: bold; font-size: 14px; padding: 12px 24px; border-radius: 8px; border: 2px solid #1E3A8A; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2563EB, stop:1 #1E3A8A); border: 2px solid #2563EB; } QRadioButton { color: #64748B; font-size: 14px; spacing: 8px; padding: 8px 12px; font-weight: bold; } QRadioButton::indicator { width: 18px; height: 18px; } QRadioButton:hover { background-color: #F1F5F9; border-radius: 4px; }")
+                edit_dialog.setStyleSheet("background-color: #faf2d9; QLabel { color: black; font-weight: bold; font-size: 14px; } QLineEdit, QComboBox, QTableWidget { background-color: #f4f5f2; color: black; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #d5cfd9; border-radius: 8px; } QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e8e4e9, stop:1 #d5cfd9); color: black; font-weight: bold; font-size: 14px; padding: 12px 24px; border-radius: 8px; border: 2px solid #e8e4e9; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d5cfd9, stop:1 #e8e4e9); border: 2px solid #d5cfd9; }")
                 
                 # Main vertical layout
                 main_layout = QtWidgets.QVBoxLayout(edit_dialog)
@@ -3127,7 +3540,7 @@ class Ui_Form(object):
                     if index >= 0:
                         provider_combo.setCurrentIndex(index)
                 
-                provider_combo.setStyleSheet("QComboBox { background-color: white; color: #1E3A8A; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #E2E8F0; border-radius: 8px; } QComboBox:focus { border: 2px solid #1E3A8A; } QComboBox::drop-down { border: none; width: 30px; } QComboBox::down-arrow { image: none; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 8px solid #64748B; width: 0; height: 0; } QComboBox QAbstractItemView { background-color: white; color: #1E3A8A; selection-background-color: #1E3A8A; selection-color: white; border: 1px solid #E2E8F0; border-radius: 5px; }")
+                provider_combo.setStyleSheet("QComboBox { background-color: #f4f5f2; color: #1B263B; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #d5cfd9; border-radius: 8px; } QComboBox:focus { border: 2px solid #d5cfd9; } QComboBox::drop-down { border: none; width: 30px; } QComboBox::down-arrow { image: none; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 8px solid #64748B; width: 0; height: 0; } QComboBox QAbstractItemView { background-color: #f4f5f2; color: #1B263B; selection-background-color: #007AFF; selection-color: white; border: 1px solid #d5cfd9; border-radius: 5px; }")
                 
                 row_layout.addWidget(QtWidgets.QLabel("المورد:"))
                 row_layout.addWidget(provider_combo, 2)
@@ -3137,7 +3550,7 @@ class Ui_Form(object):
                 amount_edit.setText(str(row_data.get('amount', '0.0')))
                 amount_edit.setValidator(QtGui.QDoubleValidator())
                 amount_edit.setMinimumHeight(40)
-                amount_edit.setStyleSheet("QLineEdit { background-color: white; color: #1E3A8A; font-weight: bold; font-size: 16px; padding: 12px 16px; border: 2px solid #E2E8F0; border-radius: 8px; } QLineEdit:focus { border: 2px solid #1E3A8A; }")
+                amount_edit.setStyleSheet("QLineEdit { background-color: #f4f5f2; color: black; font-weight: bold; font-size: 16px; padding: 12px 16px; border: 2px solid #d5cfd9; border-radius: 8px; } QLineEdit:focus { border: 2px solid #d5cfd9; }")
                 row_layout.addWidget(amount_edit, 2)
                 
                 main_layout.addLayout(row_layout)
@@ -3150,14 +3563,14 @@ class Ui_Form(object):
                 amount_returned_label = QtWidgets.QLabel(edit_dialog)
                 amount_returned_label.setText(f"إجمالي قيمة المرتجع: {row_data.get('amount_returned', '0.0')}")
                 amount_returned_label.setMinimumHeight(40)
-                amount_returned_label.setStyleSheet("font-size: 16px; background: #F1F5F9; border: 2px solid #64748B; padding: 8px; color: #1E3A8A; border-radius: 8px;")
+                amount_returned_label.setStyleSheet("font-size: 16px; background: #f4f5f2; border: 2px solid #d5cfd9; padding: 8px; color: black; border-radius: 8px;")
                 row_layout2.addWidget(amount_returned_label, 2)
                 
                 # Order Code Input
                 order_code_edit = QtWidgets.QLineEdit(edit_dialog)
                 order_code_edit.setText(row_data.get('order_code', ''))
                 order_code_edit.setMinimumHeight(40)
-                order_code_edit.setStyleSheet("QLineEdit { background-color: white; color: #1E3A8A; font-weight: bold; font-size: 16px; padding: 12px 16px; border: 2px solid #E2E8F0; border-radius: 8px; } QLineEdit:focus { border: 2px solid #1E3A8A; }")
+                order_code_edit.setStyleSheet("QLineEdit { background-color: #f4f5f2; color: black; font-weight: bold; font-size: 16px; padding: 12px 16px; border: 2px solid #d5cfd9; border-radius: 8px; } QLineEdit:focus { border: 2px solid #d5cfd9; }")
                 order_code_edit.setValidator(QtGui.QRegExpValidator(QtCore.QRegExp(r'^\d{1,10}$')))
                 row_layout2.addWidget(order_code_edit, 2)
                 
@@ -3165,7 +3578,7 @@ class Ui_Form(object):
                 
                 # Payment Options
                 payment_group = QtWidgets.QGroupBox("خيارات الدفع")
-                payment_group.setStyleSheet("QGroupBox { font-size: 15px; font-weight: bold; border: 2px solid #E2E8F0; border-radius: 12px; margin-top: 20px; padding-top: 20px; background-color: white; color: #1E3A8A; } QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 8px 0 8px; color: #1E3A8A; }")
+                payment_group.setStyleSheet("QGroupBox { font-size: 15px; font-weight: bold; border: 2px solid #d5cfd9; border-radius: 12px; margin-top: 20px; padding-top: 20px; background-color: #faf2d9; color: black; } QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 8px 0 8px; color: black; } QGroupBox QLineEdit { background-color: #f4f5f2 !important; color: black !important; }")
                 
                 payment_layout = QtWidgets.QVBoxLayout(payment_group)
                 payment_layout.setSpacing(10)
@@ -3174,14 +3587,20 @@ class Ui_Form(object):
                 radio_button_layout = QtWidgets.QHBoxLayout()
                 radio_button_layout.setSpacing(20)
                 
-                cash_radio = QtWidgets.QRadioButton("دفع نقدي كامل")
-                partial_radio = QtWidgets.QRadioButton("دفع جزئي")
-                debt_radio = QtWidgets.QRadioButton("دَيْن (دفع لاحقاً)")
-                
-                radio_style = "QRadioButton { font-size: 14px; color: #64748B; spacing: 5px; padding: 5px 8px; font-weight: bold; } QRadioButton::indicator { width: 16px; height: 16px; } QRadioButton:hover { background-color: #F1F5F9; border-radius: 4px; }"
-                
-                for radio in [cash_radio, partial_radio, debt_radio]:
-                    radio.setStyleSheet(radio_style)
+                cash_radio = QtWidgets.QLineEdit("دفع نقدي كامل")
+                cash_radio.setObjectName("payment_textbox")
+                cash_radio.setReadOnly(True)
+                partial_radio = QtWidgets.QLineEdit("دفع جزئي")
+                partial_radio.setObjectName("payment_textbox")
+                partial_radio.setReadOnly(True)
+                debt_radio = QtWidgets.QLineEdit("دَيْن (دفع لاحقاً)")
+                debt_radio.setObjectName("payment_textbox")
+                debt_radio.setReadOnly(True)
+
+                textbox_style = "QLineEdit#payment_textbox { background-color: #f4f5f2; color: black; font-weight: bold; font-size: 14px; padding: 5px 8px; border: 2px solid #d5cfd9; border-radius: 8px; }"
+
+                for textbox in [cash_radio, partial_radio, debt_radio]:
+                    textbox.setStyleSheet(textbox_style)
                     radio_button_layout.addWidget(radio)
                 
                 radio_button_layout.addStretch()
@@ -3195,12 +3614,21 @@ class Ui_Form(object):
                 payment_amount_label.setStyleSheet("font-size: 14px; min-width: 100px;")
                 
                 payment_amount_input = QtWidgets.QLineEdit()
+                payment_amount_input.setObjectName("payment_input")
                 payment_amount_input.setEnabled(False)
                 payment_amount_input.setValidator(QtGui.QDoubleValidator(0, 999999.99, 2))
-                payment_amount_input.setStyleSheet("QLineEdit { background-color: white; color: #1E3A8A; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #E2E8F0; border-radius: 8px; min-width: 100px; } QLineEdit:focus { border: 2px solid #1E3A8A; } QLineEdit:disabled { background-color: #F1F5F9; color: #94A3B8; }")
+                palette = payment_amount_input.palette()
+                palette.setColor(QtGui.QPalette.Base, QtGui.QColor("#f4f5f2"))
+                palette.setColor(QtGui.QPalette.Window, QtGui.QColor("#f4f5f2"))
+                payment_amount_input.setPalette(palette)
+                payment_amount_input.setStyleSheet("QLineEdit#payment_input { background-color: #f4f5f2; color: black; font-weight: bold; font-size: 14px; padding: 12px 16px; border: 2px solid #d5cfd9; border-radius: 8px; min-width: 100px; } QLineEdit#payment_input:focus { border: 2px solid #d5cfd9; } QLineEdit#payment_input:disabled { background-color: #f4f5f2; color: black; }")
                 
                 net_owed_label = QtWidgets.QLabel("مديونية للشركة: 0.00")
-                net_owed_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 15px 25px; background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F1F5F9, stop:1 #E2E8F0); border: 2px solid #64748B; border-radius: 8px; min-width: 300px; min-height: 50px; text-align: center; color: #1E3A8A;")
+                net_owed_label.setObjectName("net_owed")
+                palette = net_owed_label.palette()
+                palette.setColor(QtGui.QPalette.Window, QtGui.QColor("#f4f5f2"))
+                net_owed_label.setPalette(palette)
+                net_owed_label.setStyleSheet("QLabel#net_owed { font-size: 16px; font-weight: bold; padding: 15px 25px; background: #f4f5f2; border: 2px solid #d5cfd9; border-radius: 8px; min-width: 300px; min-height: 50px; text-align: center; color: black; }")
                 
                 payment_amount_layout.addWidget(payment_amount_label)  # Label first in RTL
                 payment_amount_layout.addWidget(payment_amount_input, 1)  # Input second in RTL
@@ -3259,7 +3687,7 @@ class Ui_Form(object):
                 medicineTable.setMinimumHeight(120)
                 
                 # Apply modern table styling to match add data dialog
-                medicineTable.setStyleSheet("QTableWidget { font-size: 13px; gridline-color: #E2E8F0; background-color: white; border: 2px solid #E2E8F0; border-radius: 8px; } QTableWidget::item { height: 35px; padding: 8px; border: none; border-radius: 0px; background-color: white; color: #1E3A8A; } QTableWidget::item:selected { background-color: #1E3A8A; color: white; font-weight: bold; } QTableWidget::item:focus { background-color: #3B82F6; color: white; } QHeaderView::section { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1E3A8A, stop:1 #1E40AF); color: white; font-weight: bold; font-size: 13px; padding: 10px; border: 1px solid #1E3A8A; border-radius: 0px; }")
+                medicineTable.setStyleSheet("QTableWidget { font-size: 13px; gridline-color: black; background-color: #f4f5f2; border: 2px solid #d5cfd9; border-radius: 8px; } QTableWidget::item { height: 35px; padding: 8px; border: none; border-radius: 0px; background-color: #f4f5f2; color: black; } QTableWidget::item:selected { background-color: black; color: black; font-weight: bold; } QTableWidget::item:focus { background-color: black; color: black; } QHeaderView::section { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #faf2d9, stop:1 #faf2d9); color: black; font-weight: bold; font-size: 13px; padding: 10px; border: 1px solid #d5cfd9; border-radius: 0px; }")
                 medicineTable.verticalHeader().setDefaultSectionSize(40)
                 medicineTable.verticalHeader().setMinimumSectionSize(40)
                 
@@ -3284,7 +3712,7 @@ class Ui_Form(object):
                 # Add/Remove row buttons
                 btn_layout = QtWidgets.QHBoxLayout()
                 addRowBtn = QtWidgets.QPushButton("إضافة", edit_dialog)
-                addRowBtn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E3A8A, stop:1 #1E40AF); color: white; font-weight: bold; font-size: 14px; padding: 10px 20px; border-radius: 8px; border: 2px solid #1E3A8A; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2563EB, stop:1 #1E3A8A); border: 2px solid #2563EB; }")
+                addRowBtn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e8e4e9, stop:1 #d5cfd9); color: black; font-weight: bold; font-size: 14px; padding: 10px 20px; border-radius: 8px; border: 2px solid #e8e4e9; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d5cfd9, stop:1 #e8e4e9); border: 2px solid #d5cfd9; }")
                 
                 def addMedicineRow():
                     row = medicineTable.rowCount()
@@ -3298,7 +3726,7 @@ class Ui_Form(object):
                 btn_layout.addWidget(addRowBtn)
                 
                 removeRowBtn = QtWidgets.QPushButton("حذف المحدد", edit_dialog)
-                removeRowBtn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #64748B, stop:1 #475569); color: white; font-weight: bold; font-size: 14px; padding: 10px 20px; border-radius: 8px; border: 2px solid #64748B; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #94A3B8, stop:1 #64748B); border: 2px solid #94A3B8; }")
+                removeRowBtn.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e8e4e9, stop:1 #d5cfd9); color: black; font-weight: bold; font-size: 14px; padding: 10px 20px; border-radius: 8px; border: 2px solid #e8e4e9; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d5cfd9, stop:1 #e8e4e9); border: 2px solid #d5cfd9; }")
                 
                 def removeMedicineRow():
                     selected = medicineTable.currentRow()
@@ -3312,7 +3740,7 @@ class Ui_Form(object):
                 # Submit button
                 submit_button = QtWidgets.QPushButton(edit_dialog)
                 submit_button.setObjectName("submit_button")
-                submit_button.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #10B981, stop:1 #059669); color: white; font-weight: bold; font-size: 18px; padding: 15px 30px; border-radius: 12px; border: 2px solid #10B981; min-width: 200px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #34D399, stop:1 #10B981); border: 2px solid #34D399; } QPushButton:pressed { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #059669, stop:1 #047857); }")
+                submit_button.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e8e4e9, stop:1 #d5cfd9); color: black; font-weight: bold; font-size: 18px; padding: 15px 30px; border-radius: 12px; border: 2px solid #e8e4e9; min-width: 200px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d5cfd9, stop:1 #e8e4e9); border: 2px solid #d5cfd9; }")
                 submit_button.setMinimumHeight(50)
                 main_layout.addWidget(submit_button, alignment=QtCore.Qt.AlignCenter)
                 
@@ -3351,7 +3779,7 @@ class Ui_Form(object):
                             amount_returned_label.setStyleSheet("font-size: 16px; background: #FEF2F2; border: 2px solid #DC2626; padding: 8px; color: #DC2626; border-radius: 8px;")
                         else:
                             amount_returned_label.setText(f"إجمالي قيمة المرتجع: {total_returned:.2f}")
-                            amount_returned_label.setStyleSheet("font-size: 16px; background: #F1F5F9; border: 2px solid #64748B; padding: 8px; color: #1E3A8A; border-radius: 8px;")
+                            amount_returned_label.setStyleSheet("font-size: 16px; background: #f4f5f2; border: 2px solid #d5cfd9; padding: 8px; color: black; border-radius: 8px;")
                         
                         net_amount_before_payment = total_amount - total_returned
                         payment_type = ""
@@ -3375,9 +3803,9 @@ class Ui_Form(object):
                             net_owed = net_amount_before_payment
                         
                         if net_owed > 0:
-                            net_owed_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 15px 25px; background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #FEF2F2, stop:1 #FEE2E2); border: 2px solid #FCA5A5; border-radius: 8px; min-width: 300px; min-height: 50px; text-align: center; color: #DC2626;")
+                            net_owed_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 15px 25px; background: #f4f5f2 !important; border: 2px solid #d5cfd9; border-radius: 8px; min-width: 300px; min-height: 50px; text-align: center; color: black;")
                         else:
-                            net_owed_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 15px 25px; background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #F1F5F9, stop:1 #E2E8F0); border: 2px solid #64748B; border-radius: 8px; min-width: 300px; min-height: 50px; text-align: center; color: #1E3A8A;")
+                            net_owed_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 15px 25px; background: #f4f5f2 !important; border: 2px solid #d5cfd9; border-radius: 8px; min-width: 300px; min-height: 50px; text-align: center; color: black;")
                         
                         net_owed_label.setText(f"مديونية للشركة: {net_owed:.2f}")
                         
@@ -3499,7 +3927,7 @@ class Ui_Form(object):
 
         # Add close button to main layout
         close_button = QtWidgets.QPushButton("إغلاق")
-        close_button.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #757575, stop:1 #424242); color: white; font-weight: bold; font-size: 16px; padding: 12px 24px; border-radius: 8px; border: 2px solid rgba(255, 255, 255, 0.3); min-width: 120px; min-height: 35px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #9E9E9E, stop:1 #757575); border: 2px solid rgba(255, 255, 255, 0.6); } QPushButton:pressed { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #424242, stop:1 #212121); }")
+        close_button.setStyleSheet("QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e8e4e9, stop:1 #d5cfd9); color: black; font-weight: bold; font-size: 16px; padding: 12px 24px; border-radius: 8px; border: 2px solid #e8e4e9; min-width: 120px; min-height: 35px; } QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #d5cfd9, stop:1 #e8e4e9); border: 2px solid #d5cfd9; }")
         close_button.setMinimumHeight(35)
         close_button.clicked.connect(Dialog.accept)
         
@@ -3521,6 +3949,7 @@ if __name__ == "__main__":
         ensure_admin_exists()
         ensure_suppliers_exist()
         app = QtWidgets.QApplication(sys.argv)
+        
         login = LoginDialog()
         if login.exec_() == QtWidgets.QDialog.Accepted and login.result:
             user = login.result
@@ -3550,6 +3979,10 @@ if __name__ == "__main__":
             ui = Ui_Form(user)
             ui.setupUi(Form)
             Form.show()
+            
+            # Check license after main screen is shown but don't keep app open with dialog
+            QtCore.QTimer.singleShot(500, lambda: check_and_enforce_license(Form, ui))
+            
             sys.exit(app.exec_())
         else:
             sys.exit(0)

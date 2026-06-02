@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 :: ===========================================
-:: Pharmacy Expense Tracker - Windows Build Script with Auto-Update Support
+:: Noted Expense - Windows Build Script with Auto-Update Support
 :: ===========================================
 
 :: Configuration
@@ -14,7 +14,7 @@ set TIMESTAMP=%DATE:/=-%_%TIME::=-%
 set TIMESTAMP=%TIMESTAMP: =0%
 
 :: GitHub Configuration (UPDATE THESE)
-set GITHUB_REPO=youssefasalcodes/Pharmacy-app
+set GITHUB_REPO=youssefasalcodes/Noted-Expense
 set GITHUB_TOKEN=
 set CREATE_GITHUB_RELEASE=false
 
@@ -120,7 +120,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 :: Create PyInstaller spec file
 echo [*] Creating PyInstaller spec file... >> "%LOGFILE%"
-set SPECFILE="%BUILD_DIR%\pharmacy_expense_tracker.spec"
+set SPECFILE="%BUILD_DIR%\noted_expense.spec"
 echo import os> %SPECFILE%
 echo block_cipher = None>> %SPECFILE%
 echo.>> %SPECFILE%
@@ -130,13 +130,11 @@ echo     pathex=[],>> %SPECFILE%
 echo     binaries=[],>> %SPECFILE%
 echo     datas=[>> %SPECFILE%
 echo         (r"%SCRIPT_DIR%resources", 'resources'),>> %SPECFILE%
-echo         (r"%SCRIPT_DIR%Insert_data.ui", '.'),>> %SPECFILE%
-echo         (r"%SCRIPT_DIR%resources_rc.py", '.'),>> %SPECFILE%
 echo         (r"%SCRIPT_DIR%users.json", '.'),>> %SPECFILE%
 echo         (r"%SCRIPT_DIR%data.encrypted", '.'),>> %SPECFILE%
 echo         (r"%SCRIPT_DIR%version.json", '.'),>> %SPECFILE%
 echo     ],>> %SPECFILE%
-echo     hiddenimports=[],>> %SPECFILE%
+echo     hiddenimports=['PyQt5.QtCore', 'PyQt5.QtWidgets', 'PyQt5.QtGui', 'PyQt5', 'requests'],>> %SPECFILE%
 echo     hookspath=[],>> %SPECFILE%
 echo     hooksconfig={},>> %SPECFILE%
 echo     excludes=[],>> %SPECFILE%
@@ -153,7 +151,7 @@ echo     a.binaries,>> %SPECFILE%
 echo     a.zipfiles,>> %SPECFILE%
 echo     a.datas,>> %SPECFILE%
 echo     [],>> %SPECFILE%
-echo     name='PharmacyExpenseTracker',>> %SPECFILE%
+echo     name='NotedExpense',>> %SPECFILE%
 echo     debug=False,>> %SPECFILE%
 echo     bootloader_ignore_signals=False,>> %SPECFILE%
 echo     strip=False,>> %SPECFILE%
@@ -171,7 +169,7 @@ echo )>> %SPECFILE%
 
 :: Run PyInstaller
 echo [*] Running PyInstaller... >> "%LOGFILE%"
-pyinstaller --clean --noconfirm --distpath "%DIST_DIR%" --workpath "%BUILD_DIR%" "%BUILD_DIR%\pharmacy_expense_tracker.spec" >> "%LOGFILE%" 2>&1
+pyinstaller --clean --noconfirm --distpath "%DIST_DIR%" --workpath "%BUILD_DIR%" "%BUILD_DIR%\noted_expense.spec" >> "%LOGFILE%" 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] PyInstaller build failed. Check %LOGFILE% for details. >> "%LOGFILE%"
     echo [ERROR] PyInstaller build failed. Check %LOGFILE% for details.
@@ -181,12 +179,12 @@ if %ERRORLEVEL% NEQ 0 (
 
 :: Create final package directory
 echo [*] Creating final package... >> "%LOGFILE%"
-set PACKAGE_DIR=%DIST_DIR%\PharmacyExpenseTracker
+set PACKAGE_DIR=%DIST_DIR%\NotedExpense
 if exist "%PACKAGE_DIR%" rmdir /s /q "%PACKAGE_DIR%"
 mkdir "%PACKAGE_DIR%"
 
 :: Copy built executable only
-copy "%DIST_DIR%\PharmacyExpenseTracker.exe" "%PACKAGE_DIR%\" >> "%LOGFILE%" 2>&1
+copy "%DIST_DIR%\NotedExpense.exe" "%PACKAGE_DIR%\" >> "%LOGFILE%" 2>&1
 
 :: Copy required data files
 copy "%SCRIPT_DIR%\users.json" "%PACKAGE_DIR%\" >> "%LOGFILE%" 2>&1
@@ -205,13 +203,13 @@ copy "%SCRIPT_DIR%\resources_rc.py" "%PACKAGE_DIR%\" >> "%LOGFILE%" 2>&1
 
 :: Create run script
 echo @echo off > "%PACKAGE_DIR%\run.bat"
-echo start "" "%~dp0PharmacyExpenseTracker.exe" >> "%PACKAGE_DIR%\run.bat"
+echo start "" "%~dp0NotedExpense.exe" >> "%PACKAGE_DIR%\run.bat"
 
 :: Create README
-echo Pharmacy Expense Tracker > "%PACKAGE_DIR%\README.txt"
+echo Noted Expense > "%PACKAGE_DIR%\README.txt"
 echo ====================== >> "%PACKAGE_DIR%\README.txt"
 echo. >> "%PACKAGE_DIR%\README.txt"
-echo To start the application, double-click 'run.bat' or 'PharmacyExpenseTracker.exe' >> "%PACKAGE_DIR%\README.txt"
+echo To start the application, double-click 'run.bat' or 'NotedExpense.exe' >> "%PACKAGE_DIR%\README.txt"
 echo. >> "%PACKAGE_DIR%\README.txt"
 echo Default login: >> "%PACKAGE_DIR%\README.txt"
 echo   Username: admin >> "%PACKAGE_DIR%\README.txt"
@@ -219,15 +217,15 @@ echo   Password: admin123 (change this after first login) >> "%PACKAGE_DIR%\READ
 
 :: Create ZIP archive
 echo [*] Creating ZIP archive... >> "%LOGFILE%"
-powershell -command "Compress-Archive -Path '%PACKAGE_DIR%\*' -DestinationPath '%DIST_DIR%\PharmacyExpenseTracker_%TIMESTAMP%.zip' -Force" >> "%LOGFILE%" 2>&1
+powershell -command "Compress-Archive -Path '%PACKAGE_DIR%\*' -DestinationPath '%DIST_DIR%\NotedExpense_%TIMESTAMP%.zip' -Force" >> "%LOGFILE%" 2>&1
 
 if %ERRORLEVEL% EQU 0 (
     echo [*] Build completed successfully! >> "%LOGFILE%"
     echo. >> "%LOGFILE%"
     echo [*] Build completed successfully!
     echo [*] Version: %NEW_VERSION%
-    echo [*] Executable: %PACKAGE_DIR%\PharmacyExpenseTracker.exe
-    echo [*] Package: %DIST_DIR%\PharmacyExpenseTracker_%TIMESTAMP%.zip
+    echo [*] Executable: %PACKAGE_DIR%\NotedExpense.exe
+    echo [*] Package: %DIST_DIR%\NotedExpense_%TIMESTAMP%.zip
     
     :: GitHub Release Creation (if configured)
     if "%CREATE_GITHUB_RELEASE%"=="true" (
@@ -241,9 +239,9 @@ if %ERRORLEVEL% EQU 0 (
             
             :: Create release with GitHub CLI
             if defined GITHUB_TOKEN (
-                gh release create v%NEW_VERSION% "%DIST_DIR%\PharmacyExpenseTracker_%TIMESTAMP%.zip" --repo %GITHUB_REPO% --title "Pharmacy Expense Tracker v%NEW_VERSION%" --notes "Release version %NEW_VERSION%" --token %GITHUB_TOKEN% >> "%LOGFILE%" 2>&1
+                gh release create v%NEW_VERSION% "%DIST_DIR%\NotedExpense_%TIMESTAMP%.zip" --repo %GITHUB_REPO% --title "Noted Expense v%NEW_VERSION%" --notes "Release version %NEW_VERSION%" --token %GITHUB_TOKEN% >> "%LOGFILE%" 2>&1
             ) else (
-                gh release create v%NEW_VERSION% "%DIST_DIR%\PharmacyExpenseTracker_%TIMESTAMP%.zip" --repo %GITHUB_REPO% --title "Pharmacy Expense Tracker v%NEW_VERSION%" --notes "Release version %NEW_VERSION%" >> "%LOGFILE%" 2>&1
+                gh release create v%NEW_VERSION% "%DIST_DIR%\NotedExpense_%TIMESTAMP%.zip" --repo %GITHUB_REPO% --title "Noted Expense v%NEW_VERSION%" --notes "Release version %NEW_VERSION%" >> "%LOGFILE%" 2>&1
             )
             
             if %ERRORLEVEL% EQU 0 (
@@ -253,13 +251,13 @@ if %ERRORLEVEL% EQU 0 (
                 echo [ERROR] Failed to create GitHub release >> "%LOGFILE%"
                 echo [ERROR] Failed to create GitHub release
                 echo [*] You can manually create the release using: >> "%LOGFILE%"
-                echo gh release create v%NEW_VERSION% "%DIST_DIR%\PharmacyExpenseTracker_%TIMESTAMP%.zip" --repo %GITHUB_REPO% >> "%LOGFILE%"
+                echo gh release create v%NEW_VERSION% "%DIST_DIR%\NotedExpense_%TIMESTAMP%.zip" --repo %GITHUB_REPO% >> "%LOGFILE%"
             )
         ) else (
             echo [*] GitHub CLI not found >> "%LOGFILE%"
             echo [*] GitHub CLI not found. Install from https://cli.github.com/
             echo [*] To create release manually, use: >> "%LOGFILE%"
-            echo gh release create v%NEW_VERSION% "%DIST_DIR%\PharmacyExpenseTracker_%TIMESTAMP%.zip" --repo %GITHUB_REPO% >> "%LOGFILE%"
+            echo gh release create v%NEW_VERSION% "%DIST_DIR%\NotedExpense_%TIMESTAMP%.zip" --repo %GITHUB_REPO% >> "%LOGFILE%"
         )
     )
 ) else (

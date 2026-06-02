@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Pharmacy App Auto-Updater Module
+Noted Expense Auto-Updater Module
 Handles checking for updates, downloading, and installing updates from GitHub releases
 """
 
@@ -14,10 +14,18 @@ import shutil
 import subprocess
 from pathlib import Path
 from PyQt5 import QtCore, QtWidgets, QtGui
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if it exists
+load_dotenv()
 
 # Configuration - UPDATE THESE VALUES
-GITHUB_REPO = "youssefasalcodes/Pharmacy-app"  # Replace with your GitHub username/repo
-GITHUB_TOKEN = ""  # Optional: Add a GitHub token for private repos or rate limit increases
+GITHUB_REPO = "youssefasalcodes/Noted-Expense"  # Replace with your GitHub username/repo
+# Try to get token from multiple sources in order of priority:
+# 1. NOTED_EXPENSE_GITHUB_TOKEN (set by modern installer)
+# 2. GITHUB_TOKEN (manual environment variable or .env file)
+# 3. Empty string (no token, will work for public repos only)
+GITHUB_TOKEN = os.environ.get('NOTED_EXPENSE_GITHUB_TOKEN', '') or os.environ.get('GITHUB_TOKEN', '')
 VERSION_FILE = "version.json"
 CURRENT_VERSION = "1.0.0"
 
@@ -58,8 +66,31 @@ class UpdateChecker:
     def compare_versions(self, current, latest):
         """Compare version strings (returns True if latest > current)"""
         try:
-            current_parts = [int(x) for x in current.split('.')]
-            latest_parts = [int(x) for x in latest.split('.')]
+            # Check if versions are valid
+            if not current or not latest:
+                print(f"Error comparing versions: empty version string (current: '{current}', latest: '{latest}')")
+                return False
+            
+            # Strip 'v' or 'V' prefix if present
+            current_clean = current.lstrip('vV')
+            latest_clean = latest.lstrip('vV')
+            
+            # Remove any extra whitespace
+            current_clean = current_clean.strip()
+            latest_clean = latest_clean.strip()
+            
+            # Split version parts
+            current_parts = current_clean.split('.')
+            latest_parts = latest_clean.split('.')
+            
+            # Filter out empty parts
+            current_parts = [x for x in current_parts if x]
+            latest_parts = [x for x in latest_parts if x]
+            
+            # Convert to integers
+            current_parts = [int(x) for x in current_parts]
+            latest_parts = [int(x) for x in latest_parts]
+            
             return latest_parts > current_parts
         except Exception as e:
             print(f"Error comparing versions: {e}")

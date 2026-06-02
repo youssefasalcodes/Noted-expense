@@ -1,0 +1,59 @@
+# Environment variables with sensitive information
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.exe
+*.zip
+*.7z
+build/
+dist/
+
+# Temporary files
+*.tmp
+*.log
+temp/
+tmp/
+
+# Sensitive files
+*.key
+*.pem
+credentials.json
+config.local.json
