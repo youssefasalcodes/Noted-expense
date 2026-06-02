@@ -384,8 +384,139 @@ class AppLicenseChecker:
         
         return True
 
-# Global license checker
-license_checker = AppLicenseChecker()
+class ColumnOrderManager:
+    """Manages column order preferences for tables"""
+    
+    def __init__(self):
+        self.column_order_file = os.path.join(APP_DATA_DIR, "column_orders.json")
+        self.column_orders = self.load_column_orders()
+    
+    def load_column_orders(self):
+        """Load saved column orders from file"""
+        try:
+            if os.path.exists(self.column_order_file):
+                with open(self.column_order_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"Error loading column orders: {e}")
+        return {}
+    
+    def save_column_orders(self):
+        """Save column orders to file"""
+        try:
+            os.makedirs(APP_DATA_DIR, exist_ok=True)
+            with open(self.column_order_file, 'w', encoding='utf-8') as f:
+                json.dump(self.column_orders, f, indent=2)
+        except Exception as e:
+            print(f"Error saving column orders: {e}")
+    
+    def get_column_order(self, table_name, default_columns):
+        """Get saved column order for a specific table"""
+        if table_name in self.column_orders:
+            saved_order = self.column_orders[table_name]
+            # Validate that saved columns still exist in default columns
+            return [col for col in saved_order if col in default_columns]
+        return default_columns
+    
+    def save_column_order(self, table_name, column_order):
+        """Save column order for a specific table"""
+        self.column_orders[table_name] = column_order
+        self.save_column_orders()
+
+# Global column order manager
+column_order_manager = ColumnOrderManager()
+
+class ColumnOrderManager:
+    """Manages column order preferences for tables"""
+    
+    def __init__(self):
+        self.column_order_file = os.path.join(APP_DATA_DIR, "column_orders.json")
+        self.column_orders = self.load_column_orders()
+    
+    def load_column_orders(self):
+        """Load saved column orders from file"""
+        try:
+            if os.path.exists(self.column_order_file):
+                with open(self.column_order_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"Error loading column orders: {e}")
+        return {}
+    
+    def save_column_orders(self):
+        """Save column orders to file"""
+        try:
+            os.makedirs(APP_DATA_DIR, exist_ok=True)
+            with open(self.column_order_file, 'w', encoding='utf-8') as f:
+                json.dump(self.column_orders, f, indent=2)
+        except Exception as e:
+            print(f"Error saving column orders: {e}")
+    
+    def get_column_order(self, table_name, default_columns):
+        """Get saved column order for a specific table"""
+        if table_name in self.column_orders:
+            saved_order = self.column_orders[table_name]
+            # Validate that saved columns still exist in default columns
+            return [col for col in saved_order if col in default_columns]
+        return default_columns
+    
+    def save_column_order(self, table_name, column_order):
+        """Save column order for a specific table"""
+        self.column_orders[table_name] = column_order
+        self.save_column_orders()
+
+# Global column order manager
+column_order_manager = ColumnOrderManager()
+
+class ReorderableTableWidget(QtWidgets.QTableWidget):
+    """Enhanced QTableWidget with drag-and-drop column reordering"""
+    
+    def __init__(self, table_name, default_columns):
+        super().__init__()
+        self.table_name = table_name
+        self.default_columns = default_columns
+        self.current_columns = list(default_columns)
+        
+        # Set up drag and drop for header
+        self.setHorizontalHeader(self.ReorderableHeader(self))
+        self.horizontalHeader().setSectionsMovable(True)
+        self.horizontalHeader().setSectionsClickable(False)
+        
+        # Apply saved column order
+        self.apply_column_order()
+    
+    def apply_column_order(self):
+        """Apply saved column order if available"""
+        saved_order = column_order_manager.get_column_order(self.table_name, self.default_columns)
+        if saved_order != self.default_columns:
+            self.current_columns = saved_order
+            self.setColumnOrder(self.current_columns)
+    
+    def save_current_column_order(self):
+        """Save current column order"""
+        # Get current column order from the table
+        current_order = [self.horizontalHeaderItem(col).text() for col in range(self.columnCount())]
+        column_order_manager.save_column_order(self.table_name, current_order)
+    
+    def columnMoved(self, logicalIndex, oldVisualIndex, newVisualIndex):
+        """Handle column movement"""
+        super().columnMoved(logicalIndex, oldVisualIndex, newVisualIndex)
+        # Save the new order
+        QtCore.QTimer.singleShot(100, self.save_current_column_order)
+    
+    class ReorderableHeader(QtWidgets.QHeaderView):
+        """Custom header for drag-and-drop column reordering"""
+        
+        def __init__(self, parent):
+            super().__init__(QtCore.Qt.Horizontal, parent)
+            self.parent_table = parent
+            self.setSectionsMovable(True)
+            self.setSectionsClickable(False)
+    
+    def columnMoved(self, logicalIndex, oldVisualIndex, newVisualIndex):
+        """Handle column movement and save order"""
+        super().columnMoved(logicalIndex, oldVisualIndex, newVisualIndex)
+        QtCore.QTimer.singleShot(100, self.save_current_column_order)
 
 # Compile resources if running directly
 def check_and_enforce_license(main_widget, ui):
@@ -1053,7 +1184,7 @@ class UserManagerDialog(QtWidgets.QDialog):
         layout.setSpacing(20)
         layout.setContentsMargins(25, 25, 25, 25)
         
-        self.table = QtWidgets.QTableWidget(self)
+        self.table = ReorderableTableWidget("user_management", ['اسم المستخدم', 'الدور', 'تغيير كلمة المرور'])
         self.table.setColumnCount(3)
         self.table.setHorizontalHeaderLabels(['اسم المستخدم', 'الدور', 'تغيير كلمة المرور'])
         layout.addWidget(self.table)
@@ -2840,7 +2971,9 @@ class Ui_Form(object):
 
         # Table setup with payment info column - Reordered columns with Types of returned after Amount Returned
         headers = [  'التاريخ ', 'مديونية للشركة',  'المبلغ المسدد', 'حالة السداد', 'قيمة المرتجع', 'المرتجعات',  'رقم الفاتورة',  'المستخدم', 'قيمة الفاتورة', 'المورد']
-        table = QtWidgets.QTableWidget(Dialog)
+        
+        # Create reorderable table with default column order
+        table = ReorderableTableWidget("view_data", headers)
         table.setColumnCount(len(headers))
         table.setHorizontalHeaderLabels(headers)
         table.setMinimumHeight(220)
