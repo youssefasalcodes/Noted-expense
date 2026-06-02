@@ -583,21 +583,8 @@ def disable_ui_functionality(main_widget, ui, status):
     license_dialog.show()
 
 if __name__ == '__main__':
-    try:
-        import resources_rc
-        print("Resources loaded successfully")
-    except ImportError:
-        print("Compiling resources...")
-        import subprocess
-        subprocess.run(['pyrcc5', 'resources.qrc', '-o', 'resources_rc.py'])
-        from PyQt5 import QtCore
-        QtCore.qInstallResourceFile('resources.qrc')
-        try:
-            import resources_rc
-            print("Resources compiled successfully")
-        except Exception as e:
-            print(f"Error loading resources: {str(e)}")
-            raise
+    # Resource files were removed during cleanup - skipping resource compilation
+    print("Starting application without resource files...")
 
 # Get the absolute path to the encrypted data file
 ENCRYPTED_FILE_PATH = os.path.join(APP_DATA_DIR, 'data.encrypted')
