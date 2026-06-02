@@ -653,8 +653,8 @@ class SupplierManagerDialog(QtWidgets.QDialog):
                 background-color: #f4f5f2;
             }
             QListWidget::item:selected {
-                background-color: #d5cfd9;
-                color: black;
+                background-color: #007AFF;
+                color: white;
                 font-weight: bold;
             }
             QPushButton {
@@ -1018,8 +1018,8 @@ class UserManagerDialog(QtWidgets.QDialog):
                 border: none;
             }
             QTableWidget::item:selected {
-                background-color: rgba(255, 255, 255, 0.3);
-                color: black;
+                background-color: #007AFF;
+                color: white;
                 font-weight: bold;
             }
             QHeaderView::section {
@@ -1392,8 +1392,8 @@ def add_data(current_user=None):
             background-color: #f4f5f2;
         }
         QTableWidget::item:selected {
-            background-color: black;
-            color: black;
+            background-color: #007AFF;
+            color: white;
             font-weight: bold;
         }
         QTableWidget::item:focus {
@@ -1931,8 +1931,8 @@ class Ui_Dialog(object):
                 color: black;
             }
             QTableWidget::item:selected {
-                background-color: black;
-                color: black;
+                background-color: #007AFF;
+                color: white;
                 font-weight: bold;
             }
             QTableWidget::item:focus {
@@ -2592,8 +2592,8 @@ class Ui_Form(object):
                 color: black;
             }
             QTableWidget::item:selected {
-                background-color: black;
-                color: black;
+                background-color: #007AFF;
+                color: white;
             }
             QComboBox, QLineEdit, QDateEdit {
                 background-color: #f4f5f2;
@@ -3687,7 +3687,7 @@ class Ui_Form(object):
                 medicineTable.setMinimumHeight(120)
                 
                 # Apply modern table styling to match add data dialog
-                medicineTable.setStyleSheet("QTableWidget { font-size: 13px; gridline-color: black; background-color: #f4f5f2; border: 2px solid #d5cfd9; border-radius: 8px; } QTableWidget::item { height: 35px; padding: 8px; border: none; border-radius: 0px; background-color: #f4f5f2; color: black; } QTableWidget::item:selected { background-color: black; color: black; font-weight: bold; } QTableWidget::item:focus { background-color: black; color: black; } QHeaderView::section { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #faf2d9, stop:1 #faf2d9); color: black; font-weight: bold; font-size: 13px; padding: 10px; border: 1px solid #d5cfd9; border-radius: 0px; }")
+                medicineTable.setStyleSheet("QTableWidget { font-size: 13px; gridline-color: black; background-color: #f4f5f2; border: 2px solid #d5cfd9; border-radius: 8px; } QTableWidget::item { height: 35px; padding: 8px; border: none; border-radius: 0px; background-color: #f4f5f2; color: black; } QTableWidget::item:selected { background-color: #007AFF; color: white; font-weight: bold; } QTableWidget::item:focus { background-color: #007AFF; color: white; } QHeaderView::section { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #faf2d9, stop:1 #faf2d9); color: black; font-weight: bold; font-size: 13px; padding: 10px; border: 1px solid #d5cfd9; border-radius: 0px; }")
                 medicineTable.verticalHeader().setDefaultSectionSize(40)
                 medicineTable.verticalHeader().setMinimumSectionSize(40)
                 
