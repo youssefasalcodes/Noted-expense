@@ -347,7 +347,12 @@ class UpdateDialog(QtWidgets.QDialog):
     
     def install_update(self):
         """Download and install the update"""
-        if not hasattr(self, 'update_info') or not self.update_info.get('download_url'):
+        if not hasattr(self, 'update_info'):
+            QtWidgets.QMessageBox.warning(self, "خطأ", "لم يتم العثور على معلومات التحديث. يرجى فحص التحديثات أولاً.")
+            return
+        
+        if not self.update_info.get('download_url'):
+            QtWidgets.QMessageBox.warning(self, "خطأ", "لا يوجد ملف تحديث متاح لهذا الإصدار.\n\nهذا يعني أن الإصدار الجديد على GitHub لا يحتوي على ملف ZIP قابل للتحميل.\n\nلحل هذه المشكلة:\n1. تأكد من أن الإصدار الجديد يحتوي على ملف ZIP\n2. أو راجع مسؤول النشر لإضافة ملف التحديث")
             return
         
         # Download update
