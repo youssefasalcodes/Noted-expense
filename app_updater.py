@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration - UPDATE THESE VALUES
-GITHUB_REPO = "youssefasalcodes/Pharmacy-app"  # Replace with your GitHub username/repo
+GITHUB_REPO = "youssefasalcodes/Noted-expense"  # Replace with your GitHub username/repo
 # Try to get token from multiple sources in order of priority:
 # 1. NOTED_EXPENSE_GITHUB_TOKEN (set by modern installer)
 # 2. GITHUB_TOKEN (manual environment variable or .env file)
