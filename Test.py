@@ -468,6 +468,62 @@ class ColumnOrderManager:
 # Global column order manager
 column_order_manager = ColumnOrderManager()
 
+# Helper function for styled message boxes
+def show_styled_message_box(parent, icon_type, title, message):
+    """Show a message box with the app's color scheme styling"""
+    msg_box = QtWidgets.QMessageBox(parent)
+    msg_box.setWindowTitle(title)
+    msg_box.setText(message)
+    
+    # Set icon type
+    if icon_type == 'warning':
+        msg_box.setIcon(QtWidgets.QMessageBox.Warning)
+    elif icon_type == 'information':
+        msg_box.setIcon(QtWidgets.QMessageBox.Information)
+    elif icon_type == 'critical':
+        msg_box.setIcon(QtWidgets.QMessageBox.Critical)
+    elif icon_type == 'question':
+        msg_box.setIcon(QtWidgets.QMessageBox.Question)
+    
+    # Apply styling with black text
+    msg_box.setStyleSheet("""
+        QMessageBox {
+            background-color: #faf2d9;
+            color: black;
+            font-weight: bold;
+        }
+        QMessageBox QLabel {
+            color: black;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        QMessageBox QPushButton {
+            color: black;
+            font-weight: bold;
+            background-color: #007AFF;
+            padding: 8px 16px;
+            border-radius: 8px;
+            min-width: 80px;
+        }
+        QMessageBox QPushButton:hover {
+            background-color: #0066CC;
+        }
+    """)
+    
+    return msg_box.exec_()
+
+def show_warning(parent, title, message):
+    return show_styled_message_box(parent, 'warning', title, message)
+
+def show_information(parent, title, message):
+    return show_styled_message_box(parent, 'information', title, message)
+
+def show_critical(parent, title, message):
+    return show_styled_message_box(parent, 'critical', title, message)
+
+def show_question(parent, title, message):
+    return show_styled_message_box(parent, 'question', title, message)
+
 class ReorderableTableWidget(QtWidgets.QTableWidget):
     """Enhanced QTableWidget with drag-and-drop column reordering"""
     
@@ -476,6 +532,20 @@ class ReorderableTableWidget(QtWidgets.QTableWidget):
         self.table_name = table_name
         self.default_columns = default_columns
         self.current_columns = list(default_columns)
+        
+        # Apply blue selection styling directly to the table
+        self.setStyleSheet("""
+            QTableWidget::item:selected {
+                background-color: #007AFF;
+                color: white;
+                font-weight: bold;
+            }
+            QTableWidget::item:focus {
+                background-color: #007AFF;
+                color: white;
+                font-weight: bold;
+            }
+        """)
         
         # Set up drag and drop for header
         self.setHorizontalHeader(self.ReorderableHeader(self))
@@ -505,18 +575,144 @@ class ReorderableTableWidget(QtWidgets.QTableWidget):
         QtCore.QTimer.singleShot(100, self.save_current_column_order)
     
     class ReorderableHeader(QtWidgets.QHeaderView):
-        """Custom header for drag-and-drop column reordering"""
+        """Custom header for drag-and-drop column reordering with visual indicators"""
         
         def __init__(self, parent):
             super().__init__(QtCore.Qt.Horizontal, parent)
             self.parent_table = parent
             self.setSectionsMovable(True)
             self.setSectionsClickable(False)
+            self.setDragEnabled(True)
+            self.setAcceptDrops(True)
+            self.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
+            
+            # Visual indicators
+            self.dragging_section = -1
+            self.hovered_section = -1
+            self.drop_position = -1  # Track where the column will be dropped
+            
+            # Add tooltip and cursor styling
+            self.setToolTip("Drag column headers to reorder")
+            
+            # Apply enhanced visual styling
+            self.setStyleSheet("""
+                QHeaderView::section {
+                    background-color: #d5cfd9;
+                    color: black;
+                    padding: 8px;
+                    border: 1px solid #d5cfd9;
+                    font-weight: bold;
+                    cursor: grab;
+                    border-radius: 4px;
+                }
+                QHeaderView::section:hover {
+                    background-color: #c5c5d5;
+                    border: 2px solid #007AFF;
+                }
+                QHeaderView::section:pressed {
+                    cursor: grabbing;
+                    background-color: #b5b5c5;
+                    border: 2px solid #007AFF;
+                }
+            """)
+            
+        def mousePressEvent(self, event):
+            """Handle mouse press for drag start"""
+            self.dragging_section = self.logicalIndexAt(event.pos())
+            # Start animation
+            self.animation_timer = QtCore.QTimer()
+            self.animation_timer.timeout.connect(self.update)
+            self.animation_timer.start(50)
+            super().mousePressEvent(event)
+            
+        def mouseMoveEvent(self, event):
+            """Handle mouse move for visual feedback"""
+            section = self.logicalIndexAt(event.pos())
+            if section != self.hovered_section and section >= 0:
+                self.hovered_section = section
+                # Calculate drop position based on mouse position
+                if self.dragging_section >= 0:
+                    pos = event.pos()
+                    section_pos = self.sectionViewportPosition(section)
+                    section_size = self.sectionSize(section)
+                    # Determine if drop is before or after the section
+                    if pos.x() < section_pos + section_size / 2:
+                        self.drop_position = section
+                    else:
+                        self.drop_position = section + 1
+                self.update()
+            super().mouseMoveEvent(event)
+            
+        def mouseReleaseEvent(self, event):
+            """Handle mouse release"""
+            self.dragging_section = -1
+            self.hovered_section = -1
+            self.drop_position = -1
+            # Stop animation
+            if hasattr(self, 'animation_timer'):
+                self.animation_timer.stop()
+            self.update()
+            super().mouseReleaseEvent(event)
+            
+        def paintEvent(self, event):
+            """Add visual indicators during drag"""
+            super().paintEvent(event)
+            if self.dragging_section >= 0:
+                # Add visual indicator for dragged column
+                painter = QtGui.QPainter(self.viewport())
+                painter.setRenderHint(QtGui.QPainter.Antialiasing)
+                
+                # Add simple animation when column is being dragged
+                if self.dragging_section >= 0:
+                    # Add opacity animation for drag indicator
+                    painter.setOpacity(0.8)
+                
+                # Draw drag indicator
+                rect_pos = self.sectionViewportPosition(self.dragging_section)
+                section_size = self.sectionSize(self.dragging_section)
+                
+                # Handle both QRect and integer positions
+                if hasattr(rect_pos, 'adjusted'):
+                    rect = rect_pos
+                else:
+                    rect = QtCore.QRect(rect_pos, 0, section_size, self.height())
+                
+                # Draw animated border
+                pen = QtGui.QPen(QtGui.QColor("#007AFF"), 3)
+                painter.setPen(pen)
+                painter.drawRect(rect.adjusted(1, 1, -1, -1))
+                
+                # Add highlight effect
+                highlight_color = QtGui.QColor(0, 122, 255, 50)  # #007AFF with 50 alpha
+                painter.fillRect(rect, highlight_color)
+                
+                # Draw drop position indicator
+                if self.drop_position >= 0:
+                    drop_pos = self.sectionViewportPosition(self.drop_position)
+                    if drop_pos < 0:
+                        drop_pos = self.sectionViewportPosition(self.sectionCount() - 1) + self.sectionSize(self.sectionCount() - 1)
+                    
+                    # Draw vertical line at drop position
+                    painter.setOpacity(1.0)
+                    drop_pen = QtGui.QPen(QtGui.QColor("#007AFF"), 4)
+                    painter.setPen(drop_pen)
+                    painter.drawLine(drop_pos, 0, drop_pos, self.height())
+                    
+                    # Draw arrow indicator
+                    arrow_y = self.height() // 2
+                    painter.drawLine(drop_pos - 5, arrow_y - 5, drop_pos, arrow_y)
+                    painter.drawLine(drop_pos + 5, arrow_y - 5, drop_pos, arrow_y)
+                
+                painter.end()
     
     def columnMoved(self, logicalIndex, oldVisualIndex, newVisualIndex):
         """Handle column movement and save order"""
         super().columnMoved(logicalIndex, oldVisualIndex, newVisualIndex)
         QtCore.QTimer.singleShot(100, self.save_current_column_order)
+
+# Global instances
+column_order_manager = ColumnOrderManager()
+license_checker = AppLicenseChecker()
 
 # Compile resources if running directly
 def check_and_enforce_license(main_widget, ui):
@@ -810,8 +1006,8 @@ class SupplierManagerDialog(QtWidgets.QDialog):
                 color: black;
             }
             QListWidget::item:selected {
-                background-color: black;
-                color: black;
+                background-color: #007AFF;
+                color: white;
             }
         """)
         layout.addWidget(self.supplier_list)
@@ -1469,13 +1665,29 @@ def add_data(current_user=None):
     Dialog.setMinimumSize(int(width * 0.8), int(height * 0.8))
     Dialog.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
     
-    # Set transparent background to prevent inheritance
+    # Set styling with white text for popups
     Dialog.setStyleSheet("""
         background-color: transparent;
         QLabel {
             color: black;
             font-weight: bold;
             font-size: 14px;
+        }
+        QMessageBox {
+            background-color: #faf2d9;
+            color: white;
+            font-weight: bold;
+        }
+        QMessageBox QLabel {
+            color: white;
+            font-weight: bold;
+        }
+        QMessageBox QPushButton {
+            color: white;
+            font-weight: bold;
+            background-color: #007AFF;
+            padding: 8px 16px;
+            border-radius: 4px;
         }
         QLineEdit, QComboBox {
             background-color: #f4f5f2;
@@ -1679,12 +1891,13 @@ class Ui_Dialog(object):
         # Add container to row layout
         row_layout.addLayout(provider_container, 2)
 
-        # Amount LineEdit
+        # Amount LineEdit with indicator
         self.textEdit = QtWidgets.QLineEdit(Dialog)
         self.textEdit.setObjectName("textEdit")
         self.textEdit.setPlaceholderText("قيمة الفاتورة")
         self.textEdit.setValidator(QtGui.QDoubleValidator())
         self.textEdit.textChanged.connect(self.clearPlaceholder)
+        self.textEdit.textChanged.connect(self.update_net_owed)
         self.textEdit.setMinimumHeight(40)
         self.textEdit.setStyleSheet("""
             QLineEdit {
@@ -1693,11 +1906,11 @@ class Ui_Dialog(object):
                 font-weight: bold;
                 font-size: 16px;
                 padding: 12px 16px;
-                border: 2px solid #d5cfd9;
+                border: 2px solid #F59E0B;
                 border-radius: 8px;
             }
             QLineEdit:focus {
-                border: 2px solid #d5cfd9;
+                border: 2px solid #F59E0B;
             }
         """)
         row_layout.addWidget(self.textEdit, 2)
@@ -1725,7 +1938,7 @@ class Ui_Dialog(object):
         """)
         row_layout2.addWidget(self.amountReturnedLabel, 2)
         
-        # Order Code Input
+        # Order Code Input with indicator
         self.orderCodeEdit = QtWidgets.QLineEdit(Dialog)
         self.orderCodeEdit.setObjectName("orderCodeEdit")
         self.orderCodeEdit.setPlaceholderText("رقم الفاتورة")
@@ -1737,11 +1950,11 @@ class Ui_Dialog(object):
                 font-weight: bold;
                 font-size: 16px;
                 padding: 12px 16px;
-                border: 2px solid #d5cfd9;
+                border: 2px solid #10B981;
                 border-radius: 8px;
             }
             QLineEdit:focus {
-                border: 2px solid #d5cfd9;
+                border: 2px solid #10B981;
             }
         """)
         # Set validator for 10-digit number
@@ -1983,21 +2196,88 @@ class Ui_Dialog(object):
             def createEditor(self, parent, option, index):
                 editor = super().createEditor(parent, option, index)
                 editor.setMinimumHeight(40)  # Match row height
-                editor.setStyleSheet("""
-                    QLineEdit {
-                        font-size: 13px;
-                        padding: 8px;
-                        border: 1px solid #d5cfd9;
-                        border-radius: 4px;
-                        background-color: #f4f5f2;
-                        color: black;
-                        font-weight: bold;
-                    }
-                """)
+                
+                # Add input field indicators based on column
+                if index.column() == 0:  # Medicine name column
+                    editor.setPlaceholderText("اسم الدواء")
+                    editor.setStyleSheet("""
+                        QLineEdit {
+                            font-size: 13px;
+                            padding: 8px;
+                            border: 2px solid #007AFF;
+                            border-radius: 4px;
+                            background-color: #f4f5f2;
+                            color: black;
+                            font-weight: bold;
+                        }
+                    """)
+                    # Auto-switch to English keyboard when editing medicine name
+                    def switch_keyboard(event):
+                        try:
+                            import ctypes
+                            user32 = ctypes.windll.user32
+                            user32.ActivateKeyboardLayout(0x0409, 0)  # English (US)
+                        except:
+                            pass
+                        super(QtWidgets.QLineEdit, editor).focusInEvent(event)
+                    
+                    editor.focusInEvent = switch_keyboard
+                elif index.column() == 1:  # Quantity column
+                    editor.setPlaceholderText("الكمية")
+                    editor.setStyleSheet("""
+                        QLineEdit {
+                            font-size: 13px;
+                            padding: 8px;
+                            border: 2px solid #10B981;
+                            border-radius: 4px;
+                            background-color: #f4f5f2;
+                            color: black;
+                            font-weight: bold;
+                        }
+                    """)
+                elif index.column() == 2:  # Price column
+                    editor.setPlaceholderText("السعر")
+                    editor.setStyleSheet("""
+                        QLineEdit {
+                            font-size: 13px;
+                            padding: 8px;
+                            border: 2px solid #F59E0B;
+                            border-radius: 4px;
+                            background-color: #f4f5f2;
+                            color: black;
+                            font-weight: bold;
+                        }
+                    """)
+                else:
+                    editor.setStyleSheet("""
+                        QLineEdit {
+                            font-size: 13px;
+                            padding: 8px;
+                            border: 1px solid #d5cfd9;
+                            border-radius: 4px;
+                            background-color: #f4f5f2;
+                            color: black;
+                            font-weight: bold;
+                        }
+                    """)
                 
                 # Add validator for amount returned column (column 1)
                 if index.column() == 1:  # Amount Returned column
                     editor.setValidator(QtGui.QIntValidator())
+                
+                # Auto-switch to English keyboard for medicine name column
+                if index.column() == 0:  # Medicine name column
+                    def switch_to_english():
+                        try:
+                            import ctypes
+                            user32 = ctypes.windll.user32
+                            # English (US) keyboard layout
+                            user32.ActivateKeyboardLayout(0x0409, 0)
+                        except:
+                            pass  # Fail silently
+                    
+                    # Connect focus event to switch keyboard
+                    editor.focusInEvent = lambda event: (switch_to_english(), super(QtWidgets.QLineEdit, editor).focusInEvent(event))
                 
                 # Connect enter key to move to next cell
                 editor.returnPressed.connect(lambda: self.handleEnterKey(editor, index))
@@ -2054,8 +2334,8 @@ class Ui_Dialog(object):
                 font-weight: bold;
             }
             QTableWidget::item:focus {
-                background-color: black;
-                color: black;
+                background-color: #007AFF;
+                color: white;
             }
             QHeaderView::section {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
@@ -2262,7 +2542,7 @@ class Ui_Dialog(object):
         doctor = getattr(self, 'current_user', None)
         if not doctor:
             # fallback or error if no user is set
-            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "لم يتم العثور على مستخدم مسجل الدخول لاسم الطبيب")
+            show_warning(self.textEdit.parent(), "خطأ", "لم يتم العثور على مستخدم مسجل الدخول لاسم الطبيب")
             return
                 # Gather medicine types and amounts
         medicine_types = []
@@ -2290,27 +2570,27 @@ class Ui_Dialog(object):
             order_amount = float(amount)
             returned_amount = float(amount_returned)
             if returned_amount > order_amount and order_amount > 0:
-                QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", f"قيمة المرتجع ({returned_amount:.2f}) تتجاوز قيمة الطلب ({order_amount:.2f}). لا يمكن مراجعة قيمة أكبر من قيمة الطلب.")
+                show_warning(self.textEdit.parent(), "خطأ", f"قيمة المرتجع ({returned_amount:.2f}) تتجاوز قيمة الطلب ({order_amount:.2f}). لا يمكن مراجعة قيمة أكبر من قيمة الطلب.")
                 return
         except ValueError:
-            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "قيمة الطلب أو المرتجع غير صحيحة")
+            show_warning(self.textEdit.parent(), "خطأ", "قيمة الطلب أو المرتجع غير صحيحة")
             return
         
         # Validation
         if provider == "اختر المورد":
-            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "الرجاء اختيار مورد")
+            show_warning(self.textEdit.parent(), "خطأ", "الرجاء اختيار مورد")
             return
         if not amount:
-            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "الرجاء إدخال مبلغ")
+            show_warning(self.textEdit.parent(), "خطأ", "الرجاء إدخال مبلغ")
             return
         # Only require medicine_types if amount_returned is not 0
         if float(amount_returned) != 0.0 and not medicine_types:
-            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "الرجاء إدخال دواء واحد على الأقل والكمية المرجعة")
+            show_warning(self.textEdit.parent(), "خطأ", "الرجاء إدخال دواء واحد على الأقل والكمية المرجعة")
             return
         # Require order code
         order_code = self.orderCodeEdit.text().strip()
         if not order_code:
-            QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "رمز الطلب مطلوب")
+            show_warning(self.textEdit.parent(), "خطأ", "رمز الطلب مطلوب")
             return
         # If any medicine is added, require all fields for each row
         # Check for partially filled medicine rows
@@ -2323,12 +2603,12 @@ class Ui_Dialog(object):
             price_val = price.text().strip() if price and price.text() else ''
             filled_count = sum(bool(x) for x in [name_val, amt_val, price_val])
             if 0 < filled_count < 3:
-                QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "إذا قمت بملء أي خلية في صف الدواء، يجب ملء جميع الحقول (الاسم، الكمية، السعر) في ذلك الصف")
+                show_warning(self.textEdit.parent(), "خطأ", "إذا قمت بملء أي خلية في صف الدواء، يجب ملء جميع الحقول (الاسم، الكمية، السعر) في ذلك الصف")
                 return
         if len(medicine_types) > 0:
             # Also require provider, amount, and doctor
             if provider == "اختر المورد" or not amount or not doctor:
-                QtWidgets.QMessageBox.warning(self.textEdit.parent(), "خطأ", "يجب ملء المورد والمبلغ والطبيب إذا تمت إضافة أي دواء")
+                show_warning(self.textEdit.parent(), "خطأ", "يجب ملء المورد والمبلغ والطبيب إذا تمت إضافة أي دواء")
                 return
         # Prepare the data
         import json
@@ -2378,10 +2658,10 @@ class Ui_Dialog(object):
             writer.writerow({fn: data.get(fn, '') for fn in fieldnames})
             encrypt_data(buffer)
         except Exception as e:
-            QtWidgets.QMessageBox.critical(self.textEdit.parent(), "خطأ", f"فشل حفظ البيانات: {str(e)}")
+            show_critical(self.textEdit.parent(), "خطأ", f"فشل حفظ البيانات: {str(e)}")
             return
         parent = self.textEdit.parent()
-        QtWidgets.QMessageBox.information(parent, "نجاح", "تم حفظ البيانات بنجاح!")
+        show_information(parent, "نجاح", "تم حفظ البيانات بنجاح!")
         parent.accept()
 
 
@@ -2710,6 +2990,10 @@ class Ui_Form(object):
                 color: black;
             }
             QTableWidget::item:selected {
+                background-color: #007AFF;
+                color: white;
+            }
+            QTableWidget::item:focus {
                 background-color: #007AFF;
                 color: white;
             }
@@ -3721,7 +4005,7 @@ class Ui_Form(object):
 
                 for textbox in [cash_radio, partial_radio, debt_radio]:
                     textbox.setStyleSheet(textbox_style)
-                    radio_button_layout.addWidget(radio)
+                    radio_button_layout.addWidget(textbox)
                 
                 radio_button_layout.addStretch()
                 cash_radio.setChecked(True)
